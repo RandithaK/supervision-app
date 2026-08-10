@@ -3,17 +3,13 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
 
 interface User {
   id: string;
@@ -42,22 +38,26 @@ interface Assignment {
   supervisor: { id: string; name: string; email: string } | null;
 }
 
+function statusStyle(status: string) {
+  if (status === "ACCEPTED") return "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40";
+  if (status === "REJECTED") return "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700/40";
+  if (status === "WITHDRAWN") return "bg-muted text-muted-foreground border-border";
+  return "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700/40";
+}
+
 export default function SuperviseePortalPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Real backend data state
   const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loadingData, setLoadingData] = useState(false);
 
-  // Filter state: selected area of interest tag & text search query
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // Application submission modal/form state
   const [selectedSupervisor, setSelectedSupervisor] = useState<Supervisor | null>(null);
   const [appMessage, setAppMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -69,11 +69,7 @@ export default function SuperviseePortalPage() {
       const data = await res.json();
       if (data.authenticated) {
         if (data.user.role !== "SUPERVISEE") {
-          const target =
-            data.user.role === "ADMIN" || data.user.role === "SUPERADMIN"
-              ? "/admin"
-              : "/supervisor";
-          router.push(target);
+          router.push(data.user.role === "ADMIN" || data.user.role === "SUPERADMIN" ? "/admin" : "/supervisor");
           return;
         }
         setCurrentUser(data.user);
@@ -95,62 +91,41 @@ export default function SuperviseePortalPage() {
         fetch("/api/applications"),
         fetch("/api/assignments"),
       ]);
-
       const superData = await superRes.json();
       const appData = await appRes.json();
       const assignData = await assignRes.json();
-
-      if (superData.success) {
-        setSupervisors(superData.supervisors);
-      }
-      if (appData.success) {
-        setApplications(appData.applications);
-      }
-      if (assignData.success) {
-        setAssignments(assignData.assignments);
-      }
+      if (superData.success) setSupervisors(superData.supervisors);
+      if (appData.success) setApplications(appData.applications);
+      if (assignData.success) setAssignments(assignData.assignments);
     } catch (err) {
-      console.error("Failed to fetch portal data:", err);
+      console.error(err);
     } finally {
       setLoadingData(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchSession();
-  }, [fetchSession]);
+  useEffect(() => { fetchSession(); }, [fetchSession]);
+  useEffect(() => { if (currentUser) fetchPortalData(); }, [currentUser, fetchPortalData]);
 
-  useEffect(() => {
-    if (currentUser) {
-      fetchPortalData();
-    }
-  }, [currentUser, fetchPortalData]);
-
-  // Extract all unique interest tags across all supervisors for tag filtering
   const allAvailableTags = useMemo(() => {
-    const tagsSet = new Set<string>();
+    const set = new Set<string>();
     supervisors.forEach((s) => {
-      if (Array.isArray(s.areasOfInterest)) {
-        s.areasOfInterest.forEach((tag) => tagsSet.add(tag));
-      }
+      if (Array.isArray(s.areasOfInterest)) s.areasOfInterest.forEach((t) => set.add(t));
     });
-    return Array.from(tagsSet).sort();
+    return Array.from(set).sort();
   }, [supervisors]);
 
-  // Filter supervisors by selected tag and search text
   const filteredSupervisors = useMemo(() => {
     return supervisors.filter((s) => {
+      const q = searchQuery.toLowerCase();
       const matchesSearch =
-        searchQuery === "" ||
-        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (Array.isArray(s.areasOfInterest) &&
-          s.areasOfInterest.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase())));
-
+        !q ||
+        s.name.toLowerCase().includes(q) ||
+        s.email.toLowerCase().includes(q) ||
+        (Array.isArray(s.areasOfInterest) && s.areasOfInterest.some((t) => t.toLowerCase().includes(q)));
       const matchesTag =
         selectedTagFilter === "ALL" ||
         (Array.isArray(s.areasOfInterest) && s.areasOfInterest.includes(selectedTagFilter));
-
       return matchesSearch && matchesTag;
     });
   }, [supervisors, selectedTagFilter, searchQuery]);
@@ -158,26 +133,17 @@ export default function SuperviseePortalPage() {
   const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSupervisor) return;
-
     setSubmitting(true);
     setSubmitStatus(null);
-
     try {
       const res = await fetch("/api/applications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          supervisorId: selectedSupervisor.id,
-          message: appMessage,
-        }),
+        body: JSON.stringify({ supervisorId: selectedSupervisor.id, message: appMessage }),
       });
-
       const data = await res.json();
       if (data.success) {
-        setSubmitStatus({
-          success: true,
-          msg: `Application to ${selectedSupervisor.name} submitted successfully!`,
-        });
+        setSubmitStatus({ success: true, msg: `Application to ${selectedSupervisor.name} submitted!` });
         setAppMessage("");
         setSelectedSupervisor(null);
         fetchPortalData();
@@ -201,222 +167,202 @@ export default function SuperviseePortalPage() {
 
   if (loading || !currentUser) {
     return (
-      <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
-        <div className="text-sm text-muted-foreground animate-pulse">Loading Supervisee Portal...</div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-sm text-muted-foreground animate-pulse">Loading Supervisee Portal…</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
-      {/* Top Header */}
-      <header className="border-b border-border bg-card/60 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-8 h-16 flex items-center justify-between">
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      {/* Header */}
+      <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-md">
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/" className="font-semibold text-xs text-muted-foreground hover:text-foreground">
-              &larr; Home
-            </Link>
-            <span className="text-border">|</span>
-            <span className="font-bold text-base">Supervisee Portal</span>
-            <Badge variant="outline" className="text-[10px] uppercase font-mono font-bold bg-amber-500/15 text-amber-400 border-amber-500/30">
-              {currentUser.role}
+            <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">← Home</Link>
+            <Separator orientation="vertical" className="h-4" />
+            <span className="font-semibold text-sm">Supervisee Portal</span>
+            <Badge variant="outline" className="text-[10px] uppercase font-mono bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700/40">
+              SUPERVISEE
             </Badge>
           </div>
-
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground hidden sm:inline">
-              Welcome, <strong className="text-foreground">{currentUser.name}</strong>
-            </span>
-            <Button variant="outline" size="sm" onClick={handleLogout} className="text-xs font-semibold">
-              Log Out
-            </Button>
+            <span className="text-xs text-muted-foreground hidden sm:block">{currentUser.name}</span>
+            <Button variant="outline" size="sm" onClick={handleLogout} className="text-xs">Log Out</Button>
           </div>
         </div>
       </header>
 
-      {/* Main Body */}
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-8 py-8 space-y-8">
-        
-        {/* Banner */}
-        <div className="space-y-1">
-          <h1 className="text-3xl font-extrabold tracking-tight">Supervision Application Portal</h1>
-          <p className="text-muted-foreground text-sm">
-            Explore the complete directory of supervisors, filter by areas of interest, and apply for supervision.
+
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight">Supervision Portal</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Browse supervisors, filter by interest, and apply for supervision.
           </p>
         </div>
 
-        {/* Supervision Status Card */}
-        <Card className="shadow-lg border-border">
-          <CardHeader className="pb-3">
-            <Badge variant="outline" className="w-fit text-xs text-emerald-400 border-emerald-500/30 uppercase font-mono mb-1">
-              Supervision Assignment Status
-            </Badge>
-            <CardTitle className="text-xl font-bold">
+        <Separator />
+
+        {/* Assignment status banner */}
+        <Card className={`shadow-sm border-l-4 ${assignedSupervisor ? "border-l-emerald-400 bg-emerald-50/60 dark:bg-emerald-900/10" : "border-l-amber-400 bg-amber-50/60 dark:bg-amber-900/10"}`}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-bold">
               {assignedSupervisor ? (
-                <span>Assigned to <span className="text-emerald-400">{assignedSupervisor.name}</span></span>
+                <span>Assigned to <span className="text-emerald-700 dark:text-emerald-400">{assignedSupervisor.name}</span></span>
               ) : (
-                <span className="text-amber-400">Not Yet Assigned</span>
+                <span className="text-amber-700 dark:text-amber-400">Not Yet Assigned</span>
               )}
             </CardTitle>
             <CardDescription className="text-xs">
               {assignedSupervisor
-                ? `You have an accepted supervision assignment with ${assignedSupervisor.email}.`
-                : "Browse supervisors below, filter by interest, and submit your application."}
+                ? `You have an active supervision assignment. Contact: ${assignedSupervisor.email}`
+                : "Browse the supervisor directory below and submit an application."}
             </CardDescription>
           </CardHeader>
         </Card>
 
+        {/* Submit status message */}
         {submitStatus && (
-          <div className={`p-4 rounded-xl border text-xs font-medium ${submitStatus.success ? "bg-emerald-950/40 border-emerald-800/50 text-emerald-300" : "bg-destructive/15 border-destructive/30 text-destructive"}`}>
+          <div className={`p-3 rounded-lg border text-xs font-medium ${
+            submitStatus.success
+              ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-700/40 dark:text-emerald-300"
+              : "bg-destructive/10 border-destructive/25 text-destructive"
+          }`}>
             {submitStatus.msg}
           </div>
         )}
 
-        {/* Application Form */}
+        {/* Application form (shown when a supervisor is selected) */}
         {selectedSupervisor && (
-          <Card className="shadow-xl border-primary/50 bg-primary/5">
+          <Card className="shadow-sm border-primary/30 bg-primary/5">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg font-bold">
-                  Apply for Supervision to {selectedSupervisor.name}
+                <CardTitle className="text-base font-bold">
+                  Apply to {selectedSupervisor.name}
                 </CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => setSelectedSupervisor(null)} className="text-xs">
+                <Button variant="ghost" size="sm" onClick={() => setSelectedSupervisor(null)} className="text-xs text-muted-foreground">
                   Cancel
                 </Button>
               </div>
-              <CardDescription className="text-xs">
-                Supervisor Email: <strong className="text-foreground">{selectedSupervisor.email}</strong>
-              </CardDescription>
+              <CardDescription className="text-xs">{selectedSupervisor.email}</CardDescription>
             </CardHeader>
-
-            <CardContent className="space-y-4">
-              <form onSubmit={handleApply} className="space-y-4">
+            <CardContent>
+              <form onSubmit={handleApply} className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs uppercase">Application Message / Statement of Interest</Label>
-                  <textarea
+                  <Label htmlFor="app-message" className="text-xs font-semibold uppercase tracking-wide">
+                    Statement of Interest <span className="text-muted-foreground normal-case tracking-normal">(optional)</span>
+                  </Label>
+                  <Textarea
+                    id="app-message"
                     rows={3}
                     value={appMessage}
                     onChange={(e) => setAppMessage(e.target.value)}
-                    placeholder="Describe your goals and why you wish to be supervised by this doctor..."
-                    className="w-full px-3 py-2 rounded-xl bg-background border border-border text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    placeholder="Briefly describe your goals and why you'd like this supervisor…"
+                    className="text-xs resize-none"
                   />
                 </div>
-
                 <Button type="submit" disabled={submitting} className="font-semibold text-xs">
-                  {submitting ? "Submitting Application..." : "Submit Supervision Application"}
+                  {submitting ? "Submitting…" : "Submit Application →"}
                 </Button>
               </form>
             </CardContent>
           </Card>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Complete Supervisors Directory & Interactive Filter */}
-          <Card className="shadow-lg border-border lg:col-span-2">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          {/* Supervisor directory */}
+          <Card className="shadow-sm lg:col-span-2">
             <CardHeader className="pb-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
-                  <Badge variant="outline" className="w-fit text-xs text-primary border-primary/30 uppercase font-mono mb-1">
-                    Supervisor Directory ({supervisors.length} Total)
+                  <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono text-primary border-primary/30 bg-primary/5 mb-1">
+                    Directory ({supervisors.length})
                   </Badge>
-                  <CardTitle className="text-xl font-bold">Complete List of Supervisors</CardTitle>
-                  <CardDescription className="text-xs">
-                    Browse all available supervisors and filter by area of interest.
-                  </CardDescription>
+                  <CardTitle className="text-base font-bold">All Supervisors</CardTitle>
+                  <CardDescription className="text-xs">Filter by area of interest or search by name.</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" onClick={fetchPortalData} className="text-xs">
-                  Refresh List
+                <Button variant="ghost" size="sm" onClick={fetchPortalData} className="text-xs shrink-0">
+                  Refresh
                 </Button>
               </div>
             </CardHeader>
+            <CardContent className="space-y-4">
 
-            <CardContent className="space-y-5">
-              
-              {/* Search & Tag Filter controls */}
-              <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
+              {/* Search & filter */}
+              <div className="space-y-3 p-4 rounded-lg border border-border bg-muted/30">
                 <div className="space-y-1.5">
-                  <Label className="text-xs uppercase text-muted-foreground font-semibold">Search Supervisors</Label>
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Search</Label>
                   <Input
-                    type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by supervisor name, email, or area of interest..."
+                    placeholder="Name, email or area of interest…"
                     className="text-xs"
                   />
                 </div>
-
-                {/* Quick Area of Interest Filter Buttons */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs uppercase text-muted-foreground font-semibold">Filter by Area of Interest Tag</Label>
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    <Button
-                      type="button"
-                      variant={selectedTagFilter === "ALL" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setSelectedTagFilter("ALL")}
-                      className="text-xs h-7 px-3 font-semibold"
-                    >
-                      All Supervisors ({supervisors.length})
-                    </Button>
-                    {allAvailableTags.map((tag) => (
+                {allAvailableTags.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Filter by Interest</Label>
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
                       <Button
-                        key={tag}
                         type="button"
-                        variant={selectedTagFilter === tag ? "default" : "outline"}
+                        variant={selectedTagFilter === "ALL" ? "default" : "outline"}
                         size="sm"
-                        onClick={() => setSelectedTagFilter(tag)}
-                        className="text-xs h-7 px-3 font-semibold"
+                        onClick={() => setSelectedTagFilter("ALL")}
+                        className="text-xs h-7 px-3"
                       >
-                        {tag}
+                        All ({supervisors.length})
                       </Button>
-                    ))}
+                      {allAvailableTags.map((tag) => (
+                        <Button
+                          key={tag}
+                          type="button"
+                          variant={selectedTagFilter === tag ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setSelectedTagFilter(tag)}
+                          className="text-xs h-7 px-3"
+                        >
+                          {tag}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
-              {/* Complete Supervisors List */}
+              {/* Supervisor list */}
               {loadingData ? (
-                <div className="text-xs text-muted-foreground py-8 text-center">Loading supervisors...</div>
+                <p className="text-xs text-muted-foreground py-8 text-center">Loading supervisors…</p>
               ) : filteredSupervisors.length === 0 ? (
-                <div className="text-xs text-muted-foreground py-8 text-center border border-dashed rounded-xl space-y-2">
-                  <p>No supervisors match the selected filter criteria.</p>
+                <div className="py-8 text-center border border-dashed rounded-lg space-y-2">
+                  <p className="text-xs text-muted-foreground">No supervisors match your filter.</p>
                   {(selectedTagFilter !== "ALL" || searchQuery) && (
-                    <Button
-                      variant="link"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedTagFilter("ALL");
-                        setSearchQuery("");
-                      }}
-                      className="text-xs font-semibold text-primary"
-                    >
-                      Reset Filters & View All
+                    <Button variant="link" size="sm" onClick={() => { setSelectedTagFilter("ALL"); setSearchQuery(""); }} className="text-xs">
+                      Reset filters
                     </Button>
                   )}
                 </div>
               ) : (
-                <div className="divide-y divide-border rounded-xl border border-border bg-card overflow-hidden">
+                <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
                   {filteredSupervisors.map((s) => (
-                    <div key={s.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:bg-muted/30 transition">
-                      <div className="space-y-2">
+                    <div key={s.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors">
+                      <div className="space-y-1.5 flex-1">
                         <div>
-                          <div className="font-bold text-sm text-foreground">{s.name}</div>
-                          <div className="text-xs text-muted-foreground font-mono">{s.email}</div>
+                          <p className="font-semibold text-sm">{s.name}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{s.email}</p>
                         </div>
-
-                        {/* Areas of Interest Tags */}
-                        <div className="flex flex-wrap gap-1.5 pt-1">
+                        <div className="flex flex-wrap gap-1.5">
                           {Array.isArray(s.areasOfInterest) && s.areasOfInterest.length > 0 ? (
                             s.areasOfInterest.map((tag) => (
                               <Badge
                                 key={tag}
                                 variant="outline"
                                 onClick={() => setSelectedTagFilter(tag)}
-                                className={`text-[11px] cursor-pointer transition ${
+                                className={`text-[11px] cursor-pointer transition-colors ${
                                   selectedTagFilter === tag
                                     ? "bg-primary text-primary-foreground border-primary"
-                                    : "bg-primary/10 text-primary border-primary/30 hover:bg-primary/20"
+                                    : "bg-primary/8 text-primary border-primary/25 hover:bg-primary/15"
                                 }`}
                               >
                                 {tag}
@@ -427,19 +373,14 @@ export default function SuperviseePortalPage() {
                           )}
                         </div>
                       </div>
-
-                      <div className="pt-2 sm:pt-0">
+                      <div className="shrink-0">
                         {assignedSupervisor ? (
                           <Badge variant="outline" className="text-[10px] text-muted-foreground">
                             Already Assigned
                           </Badge>
                         ) : (
-                          <Button
-                            size="sm"
-                            onClick={() => setSelectedSupervisor(s)}
-                            className="text-xs font-semibold"
-                          >
-                            Apply for Supervision &rarr;
+                          <Button size="sm" onClick={() => setSelectedSupervisor(s)} className="text-xs font-semibold">
+                            Apply →
                           </Button>
                         )}
                       </div>
@@ -450,54 +391,36 @@ export default function SuperviseePortalPage() {
             </CardContent>
           </Card>
 
-          {/* My Applications History */}
-          <Card className="shadow-lg border-border lg:col-span-1">
+          {/* My applications */}
+          <Card className="shadow-sm lg:col-span-1">
             <CardHeader className="pb-4">
-              <Badge variant="outline" className="w-fit text-xs text-amber-400 border-amber-500/30 uppercase font-mono mb-1">
+              <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700/40 mb-1">
                 My Applications
               </Badge>
-              <CardTitle className="text-lg font-bold">Application Status</CardTitle>
-              <CardDescription className="text-xs">
-                Status of all submitted supervision requests.
-              </CardDescription>
+              <CardTitle className="text-base font-bold">Application Status</CardTitle>
+              <CardDescription className="text-xs">Track all your submitted supervision requests.</CardDescription>
             </CardHeader>
-
-            <CardContent className="space-y-4">
+            <CardContent>
               {applications.length === 0 ? (
-                <div className="text-xs text-muted-foreground py-8 text-center border border-dashed rounded-xl">
-                  No applications submitted yet.
-                </div>
+                <p className="text-xs text-muted-foreground py-8 text-center border border-dashed rounded-lg">
+                  No applications yet. Pick a supervisor and apply!
+                </p>
               ) : (
-                <div className="divide-y divide-border rounded-xl border border-border bg-muted/20 overflow-hidden">
+                <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
                   {applications.map((app) => (
                     <div key={app.id} className="p-3.5 space-y-1.5 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold">
-                          {app.supervisor ? app.supervisor.name : "Supervisor"}
-                        </span>
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] uppercase font-mono ${
-                            app.status === "ACCEPTED"
-                              ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                              : app.status === "REJECTED"
-                              ? "bg-destructive/15 text-destructive border-destructive/30"
-                              : app.status === "WITHDRAWN"
-                              ? "bg-muted text-muted-foreground border-border"
-                              : "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                          }`}
-                        >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold truncate">{app.supervisor?.name ?? "Supervisor"}</span>
+                        <Badge variant="outline" className={`text-[10px] uppercase font-mono shrink-0 ${statusStyle(app.status)}`}>
                           {app.status}
                         </Badge>
                       </div>
-
                       {app.message && (
-                        <p className="text-muted-foreground text-[11px] truncate">"{app.message}"</p>
+                        <p className="text-muted-foreground text-[11px] truncate italic">&ldquo;{app.message}&rdquo;</p>
                       )}
-
                       {app.status === "WITHDRAWN" && (
-                        <p className="text-[10px] text-muted-foreground font-mono">
-                          Auto-withdrawn because another supervisor accepted your supervision request.
+                        <p className="text-[10px] text-muted-foreground">
+                          Auto-withdrawn — another supervisor accepted your request.
                         </p>
                       )}
                     </div>
@@ -508,7 +431,6 @@ export default function SuperviseePortalPage() {
           </Card>
 
         </div>
-
       </main>
     </div>
   );
