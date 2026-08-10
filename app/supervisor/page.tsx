@@ -86,34 +86,42 @@ export default function SupervisorPortalPage() {
   useEffect(() => { fetchSession(); }, [fetchSession]);
   useEffect(() => { if (currentUser) fetchPortalData(); }, [currentUser, fetchPortalData]);
 
-  const handleAddTag = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const trimmed = newTagInput.trim();
-    if (trimmed && !interestTags.includes(trimmed)) {
-      setInterestTags([...interestTags, trimmed]);
-      setNewTagInput("");
-    }
-  };
-
-  const handleSaveProfile = async () => {
+  // Save a specific tag list to the API immediately
+  const saveTagsToAPI = async (tags: string[]) => {
     setUpdatingProfile(true);
     setProfileMsg(null);
     try {
       const res = await fetch("/api/supervisor/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ areasOfInterest: interestTags }),
+        body: JSON.stringify({ areasOfInterest: tags }),
       });
       const data = await res.json();
       setProfileMsg(data.success
-        ? { ok: true, text: "Areas of interest saved." }
+        ? { ok: true, text: "Saved." }
         : { ok: false, text: data.error ?? "Failed to save." });
-      if (data.success) setTimeout(() => setProfileMsg(null), 3000);
+      if (data.success) setTimeout(() => setProfileMsg(null), 2000);
     } catch (err: any) {
       setProfileMsg({ ok: false, text: err.message });
     } finally {
       setUpdatingProfile(false);
     }
+  };
+
+  const handleAddTag = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newTagInput.trim();
+    if (!trimmed || interestTags.includes(trimmed)) return;
+    const updated = [...interestTags, trimmed];
+    setInterestTags(updated);
+    setNewTagInput("");
+    await saveTagsToAPI(updated);
+  };
+
+  const handleRemoveTag = async (tag: string) => {
+    const updated = interestTags.filter((t) => t !== tag);
+    setInterestTags(updated);
+    await saveTagsToAPI(updated);
   };
 
   const handleApplicationAction = async (applicationId: string, status: "ACCEPTED" | "REJECTED") => {
@@ -232,38 +240,40 @@ export default function SupervisorPortalPage() {
             <CardDescription className="text-xs">Add topics so supervisees can discover and filter you by interest.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {profileMsg && (
-              <div className={`p-3 rounded-lg border text-xs font-medium ${
-                profileMsg.ok
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-700/40 dark:text-emerald-300"
-                  : "bg-destructive/10 border-destructive/25 text-destructive"
-              }`}>
-                {profileMsg.text}
-              </div>
-            )}
-
             {/* Current tags */}
-            {interestTags.length === 0 ? (
-              <p className="text-xs text-muted-foreground italic border border-dashed rounded-lg p-3">
-                No topics added yet. Type a topic below and click Add.
-              </p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {interestTags.map((tag) => (
-                  <Badge key={tag} variant="outline" className="px-3 py-1 text-xs font-medium bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-700/40 flex items-center gap-2">
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => setInterestTags(interestTags.filter((t) => t !== tag))}
-                      className="text-emerald-400 hover:text-destructive transition-colors font-bold"
-                      title={`Remove "${tag}"`}
-                    >
-                      ×
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            )}
+            <div className="space-y-2">
+              {interestTags.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic border border-dashed rounded-lg p-3">
+                  No topics added yet. Type a topic below and press Enter.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {interestTags.map((tag) => (
+                    <Badge key={tag} variant="outline" className="px-3 py-1 text-xs font-medium bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-700/40 flex items-center gap-2">
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveTag(tag)}
+                        disabled={updatingProfile}
+                        className="text-emerald-400 hover:text-destructive transition-colors font-bold disabled:opacity-40"
+                        title={`Remove "${tag}"`}
+                      >
+                        ×
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {/* Inline save status */}
+              {profileMsg && (
+                <p className={`text-[11px] font-medium ${
+                  profileMsg.ok ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"
+                }`}>
+                  {profileMsg.ok ? "✓" : "✗"} {profileMsg.text}
+                </p>
+              )}
+            </div>
 
             {/* Add tag */}
             <form onSubmit={handleAddTag} className="flex gap-2">
@@ -272,17 +282,12 @@ export default function SupervisorPortalPage() {
                 onChange={(e) => setNewTagInput(e.target.value)}
                 placeholder="e.g. Cognitive Behavioral Therapy…"
                 className="text-xs flex-1"
+                disabled={updatingProfile}
               />
-              <Button type="submit" variant="secondary" size="sm" className="font-semibold text-xs shrink-0">
-                + Add
+              <Button type="submit" variant="secondary" size="sm" className="font-semibold text-xs shrink-0" disabled={updatingProfile}>
+                {updatingProfile ? "…" : "+ Add"}
               </Button>
             </form>
-
-            <div className="flex justify-end pt-1">
-              <Button onClick={handleSaveProfile} disabled={updatingProfile} className="font-semibold text-xs px-6">
-                {updatingProfile ? "Saving…" : "Save Interests"}
-              </Button>
-            </div>
           </CardContent>
         </Card>
 
