@@ -1,26 +1,9 @@
 import "reflect-metadata";
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { getUserRepository } from "@/lib/db/data-source";
 import { UserRole } from "@/lib/db/entities/User";
-import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
-
-// Helper to get authenticated user from request
-async function getAuthUser(request: Request) {
-  const cookieStore = await cookies();
-  let token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
-
-  if (!token) {
-    const authHeader = request.headers.get("Authorization");
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.substring(7);
-    }
-  }
-
-  if (!token) return null;
-  return await verifyToken(token);
-}
+import { getAuthUser } from "@/lib/api-auth";
 
 // GET /api/users - List users (Admin/SuperAdmin only)
 export async function GET(request: Request) {

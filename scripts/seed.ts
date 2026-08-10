@@ -9,6 +9,7 @@ export interface SeededUserSummary {
   email: string;
   role: UserRole;
   passwordPlain: string;
+  areasOfInterest?: string[] | null;
 }
 
 export async function seedDatabase(): Promise<{
@@ -27,24 +28,32 @@ export async function seedDatabase(): Promise<{
       email: "superadmin@example.com",
       password: hashedPassword,
       role: UserRole.SUPERADMIN,
+      areasOfInterest: null,
     },
     {
       name: "Morgan Admin",
       email: "admin@example.com",
       password: hashedPassword,
       role: UserRole.ADMIN,
+      areasOfInterest: null,
     },
     {
       name: "Dr. Sam Supervisor",
       email: "supervisor@example.com",
       password: hashedPassword,
       role: UserRole.SUPERVISOR,
+      areasOfInterest: [
+        "Cognitive Behavioral Therapy",
+        "Clinical Assessment",
+        "Child & Adolescent Psychology",
+      ],
     },
     {
       name: "Taylor Supervisee",
       email: "supervisee@example.com",
       password: hashedPassword,
       role: UserRole.SUPERVISEE,
+      areasOfInterest: null,
     },
   ];
 
@@ -60,6 +69,7 @@ export async function seedDatabase(): Promise<{
       existing.password = sample.password;
       existing.role = sample.role;
       existing.name = sample.name;
+      existing.areasOfInterest = sample.areasOfInterest;
       await userRepository.save(existing);
     }
 
@@ -69,18 +79,19 @@ export async function seedDatabase(): Promise<{
       email: existing.email,
       role: existing.role,
       passwordPlain: defaultPassword,
+      areasOfInterest: existing.areasOfInterest,
     });
   }
 
   return {
     success: true,
-    message: "Database seeded successfully with users for all 4 roles.",
+    message: "Database seeded successfully with default user accounts and supervisor areas of interest array.",
     users: results,
   };
 }
 
 async function main() {
-  console.log("🌱 Seeding SQLite database with default user roles...");
+  console.log("🌱 Seeding SQLite database with default user accounts & areas of interest array...");
   try {
     const result = await seedDatabase();
     console.log("✅", result.message);
@@ -91,6 +102,9 @@ async function main() {
         Name: u.name,
         Email: u.email,
         Password: u.passwordPlain,
+        "Areas of Interest": Array.isArray(u.areasOfInterest)
+          ? u.areasOfInterest.join(", ")
+          : "N/A",
       }))
     );
     process.exit(0);

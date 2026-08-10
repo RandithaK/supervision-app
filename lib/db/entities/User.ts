@@ -35,6 +35,9 @@ export class User {
   })
   role!: UserRole;
 
+  @Column({ type: "simple-array", nullable: true })
+  areasOfInterest?: string[] | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 
