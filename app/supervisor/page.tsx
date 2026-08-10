@@ -149,6 +149,172 @@ export default function SupervisorPortalPage() {
     }
   };
 
+  // ── Export helpers ──────────────────────────────────────────────────────────
+
+  /** Build enriched row data by joining assignments + accepted applications */
+  const buildExportRows = () => {
+    return assignments.map((a) => {
+      const accepted = acceptedApps.find((app) => app.supervisee?.id === a.supervisee?.id);
+      return {
+        name:       a.supervisee?.name   ?? "—",
+        email:      a.supervisee?.email  ?? "—",
+        assigned:   new Date(a.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+        statement:  accepted?.message   ?? "(no statement provided)",
+      };
+    });
+  };
+
+  const handleExportCSV = () => {
+    const rows = buildExportRows();
+    const headers = ["Name", "Email", "Assigned Date", "Statement of Interest"];
+    const lines = [
+      headers.join(","),
+      ...rows.map((r) =>
+        [r.name, r.email, r.assigned, `"${r.statement.replace(/"/g, '""')}"`].join(",")
+      ),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `supervisees-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportPDF = async () => {
+    const { jsPDF }  = await import("jspdf");
+    const autoTable  = (await import("jspdf-autotable")).default;
+
+    const doc        = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+    const rows       = buildExportRows();
+    const pageW      = doc.internal.pageSize.getWidth();
+    const pageH      = doc.internal.pageSize.getHeight();
+    const marginL    = 50;
+    const marginR    = pageW - 50;
+    const supervisor = currentUser?.name ?? "Supervisor";
+    const interests  = interestTags.length > 0 ? interestTags.join(", ") : "General Supervision";
+    const today      = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+
+    // ── Header block ────────────────────────────────────────────────────────
+    // Institution / app name — small caps feel
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0);
+    doc.text("STUDENT SUPERVISION APPLICATION", marginL, 45);
+
+    // Top divider
+    doc.setDrawColor(0);
+    doc.setLineWidth(1.5);
+    doc.line(marginL, 52, marginR, 52);
+
+    // Report title
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text("Supervision Assignment Report", marginL, 76);
+
+    // Sub-divider
+    doc.setLineWidth(0.5);
+    doc.line(marginL, 84, marginR, 84);
+
+    // Metadata block
+    const metaStartY = 100;
+    const lineH      = 17;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text("Supervisor:",          marginL,      metaStartY);
+    doc.text("Areas of Interest:",   marginL,      metaStartY + lineH);
+    doc.text("Date Generated:",      marginL,      metaStartY + lineH * 2);
+    doc.text("Total Students:",      marginL,      metaStartY + lineH * 3);
+
+    doc.setFont("helvetica", "normal");
+    doc.text(supervisor,             marginL + 110, metaStartY);
+    // Wrap interests to fit page width
+    const interestLines = doc.splitTextToSize(interests, marginR - marginL - 115);
+    doc.text(interestLines,          marginL + 110, metaStartY + lineH);
+    const interestHeight = interestLines.length * 12;
+    doc.text(today,                  marginL + 110, metaStartY + lineH * 2 + (interestHeight - 12));
+    doc.text(String(rows.length),    marginL + 110, metaStartY + lineH * 3 + (interestHeight - 12));
+
+    const tableStartY = metaStartY + lineH * 4 + interestHeight + 10;
+
+    // Section divider above table
+    doc.setLineWidth(0.5);
+    doc.line(marginL, tableStartY - 6, marginR, tableStartY - 6);
+
+    // ── Table ───────────────────────────────────────────────────────────────
+    autoTable(doc, {
+      startY: tableStartY,
+      margin: { left: marginL, right: 50 },
+      head: [["#", "Name", "Email", "Assigned", "Statement of Interest"]],
+      body: rows.map((r, i) => [
+        String(i + 1),
+        r.name,
+        r.email,
+        r.assigned,
+        r.statement,
+      ]),
+      // Strict B&W styles
+      headStyles: {
+        fillColor: false as any,
+        textColor: 0,
+        fontStyle: "bold",
+        fontSize: 8.5,
+        lineColor: 0,
+        lineWidth: 0.5,
+      },
+      bodyStyles: {
+        fillColor: false as any,
+        textColor: 0,
+        fontSize: 8.5,
+        lineColor: 180,
+        lineWidth: 0.3,
+      },
+      alternateRowStyles: {
+        fillColor: [240, 240, 240] as any,
+      },
+      styles: {
+        overflow: "linebreak",
+        cellPadding: 5,
+      },
+      columnStyles: {
+        0: { cellWidth: 22, halign: "center" },  // #
+        1: { cellWidth: 100 },                    // Name
+        2: { cellWidth: 130 },                    // Email
+        3: { cellWidth: 65,  halign: "center" },  // Assigned
+        4: { cellWidth: "auto" },                 // Statement
+      },
+    });
+
+    // ── Two-pass page footers ────────────────────────────────────────────────
+    // After generating all pages we know the total count.
+    const totalPages = doc.getNumberOfPages();
+    for (let pg = 1; pg <= totalPages; pg++) {
+      doc.setPage(pg);
+
+      // Footer rule
+      doc.setDrawColor(0);
+      doc.setLineWidth(0.5);
+      doc.line(marginL, pageH - 38, marginR, pageH - 38);
+
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(80);
+
+      // Left: app name
+      doc.text("Student Supervision Application", marginL, pageH - 24);
+      // Centre: page X of Y
+      doc.text(`Page ${pg} of ${totalPages}`, pageW / 2, pageH - 24, { align: "center" });
+      // Right: confidential
+      doc.text("Confidential", marginR, pageH - 24, { align: "right" });
+
+      doc.setTextColor(0);
+    }
+
+    doc.save(`supervision-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
+
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
@@ -391,11 +557,35 @@ export default function SupervisorPortalPage() {
           {/* Assigned supervisees */}
           <Card className="shadow-sm">
             <CardHeader className="pb-4">
-              <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40 mb-1">
-                Active Students
-              </Badge>
-              <CardTitle className="text-base font-bold">Assigned Supervisees</CardTitle>
-              <CardDescription className="text-xs">Supervisees currently assigned to you.</CardDescription>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40 mb-1">
+                    Active Students
+                  </Badge>
+                  <CardTitle className="text-base font-bold">Assigned Supervisees</CardTitle>
+                  <CardDescription className="text-xs">Supervisees currently assigned to you.</CardDescription>
+                </div>
+                {assignments.length > 0 && (
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportCSV}
+                      className="text-xs font-semibold"
+                    >
+                      ↓ CSV
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportPDF}
+                      className="text-xs font-semibold"
+                    >
+                      ↓ PDF
+                    </Button>
+                  </div>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {assignments.length === 0 ? (
@@ -404,17 +594,30 @@ export default function SupervisorPortalPage() {
                 </p>
               ) : (
                 <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
-                  {assignments.map((a) => (
-                    <div key={a.id} className="px-4 py-3 flex items-center justify-between border-l-4 border-l-emerald-300 dark:border-l-emerald-600">
-                      <div>
-                        <p className="font-semibold text-sm">{a.supervisee?.name ?? "Supervisee"}</p>
-                        <p className="text-xs text-muted-foreground font-mono">{a.supervisee?.email}</p>
+                  {assignments.map((a) => {
+                    const accepted = acceptedApps.find((app) => app.supervisee?.id === a.supervisee?.id);
+                    return (
+                      <div key={a.id} className="px-4 py-3 flex items-center justify-between border-l-4 border-l-emerald-300 dark:border-l-emerald-600">
+                        <div className="space-y-0.5">
+                          <p className="font-semibold text-sm">{a.supervisee?.name ?? "Supervisee"}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{a.supervisee?.email}</p>
+                          {accepted?.message && (
+                            <p className="text-[11px] text-muted-foreground italic truncate max-w-xs">
+                              &ldquo;{accepted.message}&rdquo;
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                          <Badge variant="outline" className="text-[10px] font-mono bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40">
+                            Assigned
+                          </Badge>
+                          <span className="text-[10px] text-muted-foreground">
+                            {new Date(a.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                          </span>
+                        </div>
                       </div>
-                      <Badge variant="outline" className="text-[10px] font-mono bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40">
-                        Assigned
-                      </Badge>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
