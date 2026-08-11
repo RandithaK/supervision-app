@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Lock, Mail, ShieldCheck } from "lucide-react";
 
 function getRolePath(role: string) {
   if (role === "ADMIN" || role === "SUPERADMIN") return "/admin";
@@ -70,7 +70,7 @@ function LoginForm() {
 
   return (
     <Card className="shadow-lg border-border/50 max-w-md mx-auto w-full">
-      <CardHeader className="pb-4 text-center">
+      <CardHeader className="text-center pb-4">
         <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
         <CardDescription>
           Sign in to your Supervision Portal account
@@ -78,47 +78,57 @@ function LoginForm() {
       </CardHeader>
       <CardContent>
         {error && (
-          <div className="mb-4 p-3 rounded-lg bg-destructive/15 border border-destructive/25 text-destructive text-sm font-medium">
-            {error}
+          <div className="mb-4 flex items-center gap-2 p-3 rounded-lg bg-destructive/15 border border-destructive/25 text-destructive text-sm font-medium">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
           </div>
         )}
         {success && (
-          <div className="mb-4 p-3 rounded-lg bg-emerald-500/15 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 text-sm font-medium">
-            {success}
+          <div className="mb-4 flex items-center gap-2 p-3 rounded-lg bg-emerald-500/15 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 text-sm font-medium">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>{success}</span>
           </div>
         )}
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="email">Email Address</Label>
-            <Input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@example.com"
-              disabled={loading}
-            />
+            <div className="relative">
+              <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@example.com"
+                className="pl-10"
+                disabled={loading}
+              />
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              disabled={loading}
-            />
+            <div className="relative">
+              <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="pl-10"
+                disabled={loading}
+              />
+            </div>
           </div>
-          <Button type="submit" disabled={loading} className="w-full mt-2">
+          <Button type="submit" disabled={loading} className="w-full mt-2 font-medium">
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             {loading ? "Signing in…" : "Sign In"}
           </Button>
         </form>
       </CardContent>
-      <CardFooter className="flex flex-col border-t bg-muted/20 p-4">
+      <CardFooter className="flex justify-center border-t bg-muted/20 p-4">
         <p className="text-sm text-center text-muted-foreground">
           Don't have an account?{" "}
           <Link href="/register" className="text-primary font-medium hover:underline">
@@ -134,10 +144,11 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-muted/40 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md mb-8 text-center">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-primary mb-4 text-primary-foreground font-bold text-xl shadow-sm">
-          S
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 mb-4 ring-1 ring-primary/20">
+          <ShieldCheck className="h-6 w-6 text-primary" />
         </div>
         <h1 className="text-3xl font-extrabold tracking-tight">Supervision Portal</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Sign in to your account to track your progress.</p>
       </div>
 
       <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
@@ -146,7 +157,7 @@ export default function LoginPage() {
       
       <div className="mt-8 text-center">
         <Link href="/">
-          <Button variant="ghost" size="sm" className="text-muted-foreground">
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
             ← Back to Home
           </Button>
         </Link>
@@ -154,3 +165,4 @@ export default function LoginPage() {
     </div>
   );
 }
+
