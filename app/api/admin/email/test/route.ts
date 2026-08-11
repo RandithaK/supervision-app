@@ -26,13 +26,14 @@ export async function GET(request: Request) {
       );
     }
 
-    const config = getSmtpConfig();
+    const config = await getSmtpConfig();
     const isConfigured = isSmtpConfigured();
     const connectionResult = await verifySmtpConnection();
 
     const supportedEvents: KeyEventType[] = [
       "WELCOME_USER",
       "APPLICATION_SUBMITTED",
+      "APPLICATION_RECEIVED",
       "APPLICATION_STATUS_UPDATED",
       "ASSIGNMENT_CREATED",
       "PASSWORD_RESET",
@@ -96,6 +97,15 @@ export async function POST(request: Request) {
         applicationId: "APP-2026-8891",
         submittedAt: new Date().toLocaleDateString(),
         dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisee`,
+      },
+      APPLICATION_RECEIVED: {
+        supervisorName: authUser.name || "Dr. Alice Morgan",
+        superviseeName: "Jane Smith",
+        superviseeEmail: "jane.smith@example.com",
+        applicationMessage: "I am very interested in your research area.",
+        applicationId: "APP-2026-8892",
+        submittedAt: new Date().toLocaleDateString(),
+        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisor`,
       },
       APPLICATION_STATUS_UPDATED: {
         userName: authUser.name || "Jane Smith",

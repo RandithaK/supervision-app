@@ -1,0 +1,20 @@
+subject: "New Supervision Application from {{superviseeName}}"
+title: "New Supervision Application"
+badge:
+  text: "Action Required"
+  color: "blue"
+content: |
+  <p>Hello <strong>{{supervisorName}}</strong>,</p>
+  <p>A student has applied for your supervision. Please review their application and respond at your earliest convenience.</p>
+details:
+  - label: "Student Name"
+    value: "{{superviseeName}}"
+  - label: "Student Email"
+    value: "{{superviseeEmail}}"
+  - label: "Message"
+    value: "{{applicationMessage}}"
+  - label: "Submitted On"
+    value: "{{submittedAt}}"
+cta:
+  label: "Review Application"
+  url: "{{dashboardUrl}}"

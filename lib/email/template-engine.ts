@@ -5,6 +5,7 @@ import yaml from "yaml";
 export type KeyEventType =
   | "WELCOME_USER"
   | "APPLICATION_SUBMITTED"
+  | "APPLICATION_RECEIVED"
   | "APPLICATION_STATUS_UPDATED"
   | "ASSIGNMENT_CREATED"
   | "PASSWORD_RESET"

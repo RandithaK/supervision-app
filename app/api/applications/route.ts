@@ -129,7 +129,9 @@ export async function POST(request: Request) {
 
     await appRepo.save(newApp);
 
-    // Dispatch non-blocking APPLICATION_SUBMITTED email to Supervisee
+    const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}`;
+
+    // Dispatch non-blocking APPLICATION_SUBMITTED email + push to the Supervisee (confirmation)
     EmailService.sendEvent({
       eventType: "APPLICATION_SUBMITTED",
       to: authUser.email,
@@ -137,10 +139,27 @@ export async function POST(request: Request) {
         userName: authUser.name,
         applicationId: newApp.id,
         submittedAt: new Date().toLocaleDateString(),
-        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisee`,
+        dashboardUrl: `${dashboardUrl}/supervisee`,
       }
     }).catch((err) => {
       console.error("Failed to send application submitted email:", err);
+    });
+
+    // Dispatch non-blocking APPLICATION_RECEIVED email + push to the Supervisor
+    EmailService.sendEvent({
+      eventType: "APPLICATION_RECEIVED",
+      to: supervisor.email,
+      payload: {
+        supervisorName: supervisor.name,
+        superviseeName: authUser.name,
+        superviseeEmail: authUser.email,
+        applicationMessage: message || "No message provided.",
+        applicationId: newApp.id,
+        submittedAt: new Date().toLocaleDateString(),
+        dashboardUrl: `${dashboardUrl}/supervisor`,
+      }
+    }).catch((err) => {
+      console.error("Failed to send application received email to supervisor:", err);
     });
 
     return NextResponse.json(
