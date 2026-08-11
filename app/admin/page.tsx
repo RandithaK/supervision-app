@@ -78,6 +78,14 @@ export default function AdminPortalPage() {
   const [exportingPDF, setExportingPDF] = useState(false);
 
   const [allowedDomains, setAllowedDomains] = useState("");
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpSecure, setSmtpSecure] = useState(false);
+  const [smtpUser, setSmtpUser] = useState("");
+  const [smtpPass, setSmtpPass] = useState("");
+  const [smtpFromName, setSmtpFromName] = useState("");
+  const [smtpFromEmail, setSmtpFromEmail] = useState("");
+
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsStatus, setSettingsStatus] = useState<{ success?: boolean; msg?: string } | null>(null);
 
@@ -120,6 +128,13 @@ export default function AdminPortalPage() {
       const data = await res.json();
       if (data.success) {
         setAllowedDomains(data.settings.ALLOWED_REGISTRATION_DOMAINS || "");
+        setSmtpHost(data.settings.SMTP_HOST || "");
+        setSmtpPort(data.settings.SMTP_PORT || "587");
+        setSmtpSecure(data.settings.SMTP_SECURE === "true");
+        setSmtpUser(data.settings.SMTP_USER || "");
+        setSmtpPass(data.settings.SMTP_PASS || "");
+        setSmtpFromName(data.settings.SMTP_FROM_NAME || "");
+        setSmtpFromEmail(data.settings.SMTP_FROM_EMAIL || "");
       }
     } catch (err) {
       console.error("Failed to fetch settings", err);
@@ -180,8 +195,16 @@ export default function AdminPortalPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          key: "ALLOWED_REGISTRATION_DOMAINS",
-          value: allowedDomains,
+          settings: [
+            { key: "ALLOWED_REGISTRATION_DOMAINS", value: allowedDomains },
+            { key: "SMTP_HOST", value: smtpHost },
+            { key: "SMTP_PORT", value: smtpPort },
+            { key: "SMTP_SECURE", value: smtpSecure ? "true" : "false" },
+            { key: "SMTP_USER", value: smtpUser },
+            { key: "SMTP_PASS", value: smtpPass },
+            { key: "SMTP_FROM_NAME", value: smtpFromName },
+            { key: "SMTP_FROM_EMAIL", value: smtpFromEmail },
+          ]
         }),
       });
       const data = await res.json();
@@ -646,23 +669,84 @@ export default function AdminPortalPage() {
                     {settingsStatus.msg}
                   </div>
                 )}
-                <form onSubmit={handleSaveSettings} className="space-y-3 max-w-xl">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="allowedDomains" className="text-xs font-semibold uppercase tracking-wide">
-                      Allowed Registration Domains
-                    </Label>
-                    <Input 
-                      id="allowedDomains" 
-                      value={allowedDomains} 
-                      onChange={(e) => setAllowedDomains(e.target.value)} 
-                      placeholder="example.com, test.edu (Leave blank for no restrictions)" 
-                    />
-                    <p className="text-[11px] text-muted-foreground mt-1">
-                      Comma-separated list of domains that are permitted to self-register via Email OTP.
-                    </p>
+                <form onSubmit={handleSaveSettings} className="space-y-6 max-w-2xl">
+                  
+                  {/* Registration Settings */}
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold border-b pb-1">Registration Controls</h3>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="allowedDomains" className="text-xs font-semibold uppercase tracking-wide">
+                        Allowed Registration Domains
+                      </Label>
+                      <Input 
+                        id="allowedDomains" 
+                        value={allowedDomains} 
+                        onChange={(e) => setAllowedDomains(e.target.value)} 
+                        placeholder="example.com, test.edu (Leave blank for no restrictions)" 
+                      />
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Comma-separated list of domains that are permitted to self-register via Email OTP.
+                      </p>
+                    </div>
                   </div>
-                  <Button type="submit" disabled={savingSettings} className="font-semibold mt-1">
-                    {savingSettings ? "Saving…" : "Save Settings"}
+
+                  {/* SMTP Settings */}
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold border-b pb-1">SMTP Configuration</h3>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="smtpHost" className="text-xs font-semibold uppercase tracking-wide">SMTP Host</Label>
+                        <Input id="smtpHost" value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="127.0.0.1" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="smtpPort" className="text-xs font-semibold uppercase tracking-wide">SMTP Port</Label>
+                        <Input id="smtpPort" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="2525" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="smtpUser" className="text-xs font-semibold uppercase tracking-wide">SMTP Username</Label>
+                        <Input id="smtpUser" value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} placeholder="Leave blank if none" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="smtpPass" className="text-xs font-semibold uppercase tracking-wide">SMTP Password</Label>
+                        <Input id="smtpPass" type="password" value={smtpPass} onChange={(e) => setSmtpPass(e.target.value)} placeholder="Leave blank to keep unchanged" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="smtpFromName" className="text-xs font-semibold uppercase tracking-wide">Sender Name</Label>
+                        <Input id="smtpFromName" value={smtpFromName} onChange={(e) => setSmtpFromName(e.target.value)} placeholder="Supervision App" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="smtpFromEmail" className="text-xs font-semibold uppercase tracking-wide">Sender Email</Label>
+                        <Input id="smtpFromEmail" value={smtpFromEmail} onChange={(e) => setSmtpFromEmail(e.target.value)} placeholder="noreply@example.com" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 pt-2">
+                      <Label htmlFor="smtpSecure" className="text-xs font-semibold uppercase tracking-wide">Connection Security</Label>
+                      <Select value={smtpSecure ? "true" : "false"} onValueChange={(val) => setSmtpSecure(val === "true")}>
+                        <SelectTrigger id="smtpSecure">
+                          <SelectValue placeholder="Select security" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="false">Standard / STARTTLS (Port 587/25)</SelectItem>
+                          <SelectItem value="true">TLS / SSL (Port 465)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Use TLS/SSL for port 465. Use Standard for port 587 (NodeMailer upgrades to STARTTLS automatically).
+                      </p>
+                    </div>
+
+                  </div>
+
+                  <Button type="submit" disabled={savingSettings} className="font-semibold mt-4">
+                    {savingSettings ? "Saving Settings…" : "Save All Settings"}
                   </Button>
                 </form>
               </CardContent>

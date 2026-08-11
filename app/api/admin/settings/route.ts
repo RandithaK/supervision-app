@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getSettingRepository } from "@/lib/db/data-source";
 import { getSession } from "@/lib/api-auth";
 import { UserRole } from "@/lib/db/entities/User";
+import { clearTransporterCache } from "@/lib/email/smtp-sender";
 
 export async function GET() {
   try {
@@ -16,7 +17,12 @@ export async function GET() {
     
     // Convert array to key-value object for easier frontend consumption
     const settingsMap = settings.reduce((acc, setting) => {
-      acc[setting.key] = setting.value;
+      // Mask password for frontend
+      if (setting.key === "SMTP_PASS" && setting.value) {
+        acc[setting.key] = "********";
+      } else {
+        acc[setting.key] = setting.value;
+      }
       return acc;
     }, {} as Record<string, string | null>);
 
@@ -35,26 +41,43 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { key, value } = body;
+    const { settings } = body;
 
-    if (!key) {
-      return NextResponse.json({ success: false, error: "Setting key is required." }, { status: 400 });
+    if (!settings || !Array.isArray(settings)) {
+      return NextResponse.json({ success: false, error: "Settings array is required." }, { status: 400 });
     }
 
     const settingRepo = await getSettingRepository();
-    let setting = await settingRepo.findOneBy({ key });
+    
+    for (const item of settings) {
+      const { key, value } = item;
+      if (!key) continue;
 
-    if (setting) {
-      setting.value = value;
-    } else {
-      setting = settingRepo.create({ key, value });
+      // Skip password if it's the masked placeholder
+      if (key === "SMTP_PASS" && value === "********") {
+        continue;
+      }
+
+      let setting = await settingRepo.findOneBy({ key });
+
+      if (setting) {
+        setting.value = value;
+      } else {
+        setting = settingRepo.create({ key, value });
+      }
+
+      await settingRepo.save(setting);
     }
 
-    await settingRepo.save(setting);
+    // Force SMTP module to reconnect on next dispatch if SMTP settings were updated
+    const smtpKeys = ["SMTP_HOST", "SMTP_PORT", "SMTP_SECURE", "SMTP_USER", "SMTP_PASS", "SMTP_FROM_NAME", "SMTP_FROM_EMAIL"];
+    if (settings.some(s => smtpKeys.includes(s.key))) {
+      clearTransporterCache();
+    }
 
-    return NextResponse.json({ success: true, message: "Setting updated successfully." });
+    return NextResponse.json({ success: true, message: "Settings updated successfully." });
   } catch (error: any) {
     console.error("Update setting error:", error);
-    return NextResponse.json({ success: false, error: "Failed to update setting." }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Failed to update settings." }, { status: 500 });
   }
 }

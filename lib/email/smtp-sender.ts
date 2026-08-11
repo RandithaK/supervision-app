@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import type { Transporter, SendMailOptions } from "nodemailer";
+import { getSettingRepository } from "@/lib/db/data-source";
 
 export interface SmtpConfig {
   host: string;
@@ -29,27 +30,51 @@ export interface EmailSendResult {
   error?: string;
 }
 
-export function getSmtpConfig(): SmtpConfig {
+/**
+ * Fetch SMTP Config from Database, falling back to process.env
+ */
+export async function getSmtpConfig(): Promise<SmtpConfig> {
+  let dbSettings: Record<string, string | null> = {};
+  try {
+    const settingRepo = await getSettingRepository();
+    const settings = await settingRepo.find();
+    dbSettings = settings.reduce((acc, s) => {
+      acc[s.key] = s.value;
+      return acc;
+    }, {} as Record<string, string | null>);
+  } catch (e) {
+    console.warn("Could not load DB settings for SMTP config, falling back to env.");
+  }
+
+  const getVal = (key: string) => dbSettings[key] || process.env[key] || "";
+  
+  const portStr = getVal("SMTP_PORT");
+  const secureStr = getVal("SMTP_SECURE");
+
   return {
-    host: process.env.SMTP_HOST || "",
-    port: parseInt(process.env.SMTP_PORT || "587", 10),
-    secure: process.env.SMTP_SECURE === "true",
-    user: process.env.SMTP_USER || "",
-    pass: process.env.SMTP_PASS || "",
-    fromName: process.env.SMTP_FROM_NAME || "Supervision App",
-    fromEmail: process.env.SMTP_FROM_EMAIL || "noreply@supervision-app.com",
+    host: getVal("SMTP_HOST"),
+    port: parseInt(portStr || "587", 10),
+    secure: secureStr === "true",
+    user: getVal("SMTP_USER"),
+    pass: getVal("SMTP_PASS"),
+    fromName: getVal("SMTP_FROM_NAME") || "Supervision App",
+    fromEmail: getVal("SMTP_FROM_EMAIL") || "noreply@supervision-app.com",
   };
 }
 
-export function isSmtpConfigured(): boolean {
-  const config = getSmtpConfig();
+export async function isSmtpConfigured(): Promise<boolean> {
+  const config = await getSmtpConfig();
   return Boolean(config.host && config.port);
 }
 
 let cachedTransporter: Transporter | null = null;
 
+export function clearTransporterCache() {
+  cachedTransporter = null;
+}
+
 export async function createTransporter(): Promise<{ transporter: Transporter; mode: "smtp" | "ethereal" | "console" }> {
-  const config = getSmtpConfig();
+  const config = await getSmtpConfig();
 
   // If host and user/port are configured, use standard SMTP transport
   if (config.host) {
@@ -100,7 +125,8 @@ export async function getTransporter(): Promise<{ transporter: Transporter; mode
     cachedTransporter = res.transporter;
     return res;
   }
-  const mode = isSmtpConfigured() ? "smtp" : "console";
+  const isConfigured = await isSmtpConfigured();
+  const mode = isConfigured ? "smtp" : "console";
   return { transporter: cachedTransporter, mode };
 }
 
@@ -121,7 +147,7 @@ export async function verifySmtpConnection(): Promise<{ success: boolean; messag
     return {
       success: true,
       message: `SMTP Connection successfully verified (${mode.toUpperCase()} mode).`,
-      details: { verified, mode, config: getSmtpConfig() },
+      details: { verified, mode, config: await getSmtpConfig() },
     };
   } catch (error: any) {
     return {
@@ -136,7 +162,7 @@ export async function verifySmtpConnection(): Promise<{ success: boolean; messag
  * Send an email via the configured SMTP transport
  */
 export async function sendMail(options: EmailSendOptions): Promise<EmailSendResult> {
-  const config = getSmtpConfig();
+  const config = await getSmtpConfig();
   const from = `"${config.fromName}" <${config.fromEmail}>`;
 
   try {
@@ -173,9 +199,10 @@ export async function sendMail(options: EmailSendOptions): Promise<EmailSendResu
     };
   } catch (error: any) {
     console.error("[EMAIL DISPATCH ERROR]", error);
+    const isConfigured = await isSmtpConfigured();
     return {
       success: false,
-      mode: isSmtpConfigured() ? "smtp" : "console",
+      mode: isConfigured ? "smtp" : "console",
       error: error.message || "Failed to send email",
     };
   }
