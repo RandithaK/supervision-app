@@ -1,14 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Loader2 } from "lucide-react";
 
 function getRolePath(role: string) {
   if (role === "ADMIN" || role === "SUPERADMIN") return "/admin";
@@ -17,43 +16,14 @@ function getRolePath(role: string) {
   return "/";
 }
 
-const TEST_ACCOUNTS = [
-  {
-    role: "SUPERADMIN",
-    label: "Super Admin",
-    email: "superadmin@example.com",
-    badgeClass: "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-700/40",
-    cardClass: "border-l-4 border-l-violet-300 dark:border-l-violet-600",
-  },
-  {
-    role: "ADMIN",
-    label: "Admin",
-    email: "admin@example.com",
-    badgeClass: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700/40",
-    cardClass: "border-l-4 border-l-blue-300 dark:border-l-blue-600",
-  },
-  {
-    role: "SUPERVISOR",
-    label: "Supervisor",
-    email: "supervisor@example.com",
-    badgeClass: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40",
-    cardClass: "border-l-4 border-l-emerald-300 dark:border-l-emerald-600",
-  },
-  {
-    role: "SUPERVISEE",
-    label: "Supervisee",
-    email: "supervisee@example.com",
-    badgeClass: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700/40",
-    cardClass: "border-l-4 border-l-amber-300 dark:border-l-amber-600",
-  },
-];
-
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const fetchSession = useCallback(async () => {
     try {
@@ -69,12 +39,16 @@ export default function LoginPage() {
 
   useEffect(() => {
     fetchSession();
-  }, [fetchSession]);
+    if (searchParams.get("registered") === "true") {
+      setSuccess("Account created successfully. Please log in.");
+    }
+  }, [fetchSession, searchParams]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setSuccess("");
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -95,122 +69,88 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Top nav strip */}
-      <header className="border-b border-border bg-card/80 backdrop-blur-md">
-        <div className="max-w-4xl mx-auto px-4 sm:px-8 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="h-7 w-7 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm shadow-sm">
-              S
-            </div>
-            <span className="font-semibold text-sm">Student Supervision Application</span>
-          </Link>
-          <Link href="/">
-            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground">
-              ← Back to Home
-            </Button>
-          </Link>
-        </div>
-      </header>
-
-      <main className="flex-1 flex items-center justify-center p-4 sm:p-8">
-        <div className="w-full max-w-3xl space-y-6">
-
-          {/* Page title */}
-          <div className="text-center space-y-2">
-            <h1 className="text-3xl font-extrabold tracking-tight">Sign In</h1>
-            <p className="text-muted-foreground text-sm">
-              Enter your credentials to access your role dashboard.
-            </p>
+    <Card className="shadow-lg border-border/50 max-w-md mx-auto w-full">
+      <CardHeader className="pb-4 text-center">
+        <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
+        <CardDescription>
+          Sign in to your Supervision Portal account
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {error && (
+          <div className="mb-4 p-3 rounded-lg bg-destructive/15 border border-destructive/25 text-destructive text-sm font-medium">
+            {error}
           </div>
-
-          {/* Test accounts */}
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold text-muted-foreground">
-                Seeded test accounts
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Click any card to pre-fill credentials. Password:{" "}
-                <code className="text-primary font-mono font-bold">password123</code>
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {TEST_ACCOUNTS.map((a) => (
-                  <button
-                    key={a.role}
-                    type="button"
-                    onClick={() => { setEmail(a.email); setPassword("password123"); setError(""); }}
-                    className={`text-left p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors space-y-1.5 ${a.cardClass}`}
-                  >
-                    <Badge variant="outline" className={`text-[10px] font-semibold ${a.badgeClass}`}>
-                      {a.role}
-                    </Badge>
-                    <div className="text-sm font-semibold">{a.label}</div>
-                    <div className="text-[11px] text-muted-foreground font-mono truncate">{a.email}</div>
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="flex items-center gap-3">
-            <Separator className="flex-1" />
-            <span className="text-xs text-muted-foreground">or enter credentials</span>
-            <Separator className="flex-1" />
+        )}
+        {success && (
+          <div className="mb-4 p-3 rounded-lg bg-emerald-500/15 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 text-sm font-medium">
+            {success}
           </div>
+        )}
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="email">Email Address</Label>
+            <Input
+              id="email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@example.com"
+              disabled={loading}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              disabled={loading}
+            />
+          </div>
+          <Button type="submit" disabled={loading} className="w-full mt-2">
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {loading ? "Signing in…" : "Sign In"}
+          </Button>
+        </form>
+      </CardContent>
+      <CardFooter className="flex flex-col border-t bg-muted/20 p-4">
+        <p className="text-sm text-center text-muted-foreground">
+          Don't have an account?{" "}
+          <Link href="/register" className="text-primary font-medium hover:underline">
+            Register as Supervisee
+          </Link>
+        </p>
+      </CardFooter>
+    </Card>
+  );
+}
 
-          {/* Login form */}
-          <Card className="shadow-sm max-w-md mx-auto w-full">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-xl font-bold">Sign In to Your Account</CardTitle>
-              <CardDescription className="text-xs">
-                Public self-registration is disabled. Accounts are provisioned by Admins.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {error && (
-                <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/25 text-destructive text-xs font-medium">
-                  {error}
-                </div>
-              )}
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="email" className="text-xs font-semibold uppercase tracking-wide">
-                    Email Address
-                  </Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="e.g. admin@example.com"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="password" className="text-xs font-semibold uppercase tracking-wide">
-                    Password
-                  </Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                  />
-                </div>
-                <Button type="submit" disabled={loading} className="w-full font-semibold">
-                  {loading ? "Signing in…" : "Sign In"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-
+export default function LoginPage() {
+  return (
+    <div className="min-h-screen bg-muted/40 flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-md mb-8 text-center">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-primary mb-4 text-primary-foreground font-bold text-xl shadow-sm">
+          S
         </div>
-      </main>
+        <h1 className="text-3xl font-extrabold tracking-tight">Supervision Portal</h1>
+      </div>
+
+      <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+        <LoginForm />
+      </Suspense>
+      
+      <div className="mt-8 text-center">
+        <Link href="/">
+          <Button variant="ghost" size="sm" className="text-muted-foreground">
+            ← Back to Home
+          </Button>
+        </Link>
+      </div>
     </div>
   );
 }

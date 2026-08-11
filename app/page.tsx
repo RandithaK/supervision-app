@@ -21,50 +21,6 @@ function getPortalPath(role?: string) {
   return "/login";
 }
 
-const PORTALS = [
-  {
-    role: "Admin & SuperAdmin",
-    path: "/admin",
-    badge: "Administration",
-    badgeClass: "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-700/40",
-    borderClass: "border-l-4 border-l-violet-300 dark:border-l-violet-600",
-    title: "Admin Portal",
-    description: "Provision and manage user accounts across all roles.",
-    bullets: [
-      "Register Supervisors and Supervisees",
-      "Manage roles (SuperAdmin can create Admin accounts)",
-      "Search and browse the registered user directory",
-    ],
-  },
-  {
-    role: "SUPERVISOR",
-    path: "/supervisor",
-    badge: "Supervisor",
-    badgeClass: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40",
-    borderClass: "border-l-4 border-l-emerald-300 dark:border-l-emerald-600",
-    title: "Supervisor Portal",
-    description: "Manage your areas of interest and supervise students.",
-    bullets: [
-      "Set areas of interest to appear in supervisee search",
-      "Accept or reject incoming supervision applications",
-      "View your full list of assigned supervisees",
-    ],
-  },
-  {
-    role: "SUPERVISEE",
-    path: "/supervisee",
-    badge: "Supervisee",
-    badgeClass: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700/40",
-    borderClass: "border-l-4 border-l-amber-300 dark:border-l-amber-600",
-    title: "Supervisee Portal",
-    description: "Find a supervisor and track your application status.",
-    bullets: [
-      "Browse the full directory of available supervisors",
-      "Filter supervisors by area of interest",
-      "Apply for supervision and track application status",
-    ],
-  },
-];
 
 export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -104,11 +60,18 @@ export default function HomePage() {
                   </Link>
                 </div>
               ) : (
-                <Link href="/login">
-                  <Button size="sm" className="text-xs font-semibold">
-                    Sign In
-                  </Button>
-                </Link>
+                <div className="flex gap-2">
+                  <Link href="/login">
+                    <Button size="sm" variant="outline" className="text-xs font-semibold">
+                      Sign In
+                    </Button>
+                  </Link>
+                  <Link href="/register">
+                    <Button size="sm" className="text-xs font-semibold">
+                      Register
+                    </Button>
+                  </Link>
+                </div>
               )
             )}
           </div>
@@ -136,46 +99,23 @@ export default function HomePage() {
                 </Button>
               </Link>
             ) : (
-              <Link href="/login">
-                <Button size="lg" className="font-semibold px-8">
-                  Sign In to Get Started →
-                </Button>
-              </Link>
+              <>
+                <Link href="/login">
+                  <Button size="lg" variant="outline" className="font-semibold px-8">
+                    Sign In
+                  </Button>
+                </Link>
+                <Link href="/register">
+                  <Button size="lg" className="font-semibold px-8">
+                    Register as Supervisee →
+                  </Button>
+                </Link>
+              </>
             )}
           </div>
         </section>
 
-        <Separator className="max-w-5xl mx-auto" />
 
-        {/* Portal cards */}
-        <section className="max-w-5xl mx-auto px-4 sm:px-8 py-12">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-6 text-center">
-            Three role-based portals
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {PORTALS.map((p) => (
-              <Card key={p.role} className={`shadow-sm hover:shadow-md transition-shadow ${p.borderClass}`}>
-                <CardHeader className="pb-2">
-                  <Badge variant="outline" className={`w-fit text-[11px] font-semibold mb-2 ${p.badgeClass}`}>
-                    {p.badge}
-                  </Badge>
-                  <CardTitle className="text-lg font-bold">{p.title}</CardTitle>
-                  <CardDescription className="text-xs">{p.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-1.5">
-                    {p.bullets.map((b) => (
-                      <li key={b} className="text-xs text-muted-foreground flex items-start gap-2">
-                        <span className="text-primary mt-0.5">•</span>
-                        <span>{b}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
       </main>
 
       <footer className="border-t border-border py-5 text-center text-xs text-muted-foreground">
