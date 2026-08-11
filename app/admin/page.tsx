@@ -16,8 +16,54 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, XAxis, YAxis } from "recharts";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 
-interface User {
+const BAR_COLORS = [
+  "#6366f1", // Indigo
+  "#3b82f6", // Blue
+  "#10b981", // Emerald
+  "#8b5cf6", // Violet
+  "#f59e0b", // Amber
+  "#ec4899", // Pink
+  "#14b8a6", // Teal
+  "#f97316", // Orange
+];
+import {
+  AlertCircle,
+  ArrowLeft,
+  BarChart3,
+  BookOpen,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Globe,
+  KeyRound,
+  Loader2,
+  Lock,
+  LogOut,
+  Mail,
+  RefreshCw,
+  Search,
+  Settings,
+  Shield,
+  ShieldCheck,
+  Sliders,
+  User,
+  UserCheck,
+  UserPlus,
+  Users,
+} from "lucide-react";
+
+interface UserAccount {
   id: string;
   name: string;
   email: string;
@@ -39,30 +85,57 @@ interface SupervisorReportItem {
   }>;
 }
 
-const ROLE_STYLES: Record<string, { badge: string; row: string }> = {
+type TabType = "overview" | "users" | "add-user" | "settings";
+
+const supervisorChartConfig = {
+  students: {
+    label: "Assigned Students",
+    color: "hsl(var(--primary))",
+  },
+} satisfies ChartConfig;
+
+const ROLE_STYLES: Record<string, { badge: string; border: string; dot: string }> = {
   SUPERADMIN: {
-    badge: "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-700/40",
-    row: "border-l-4 border-l-violet-300 dark:border-l-violet-600",
+    badge: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
+    border: "border-purple-500/30",
+    dot: "bg-purple-500",
   },
   ADMIN: {
-    badge: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700/40",
-    row: "border-l-4 border-l-blue-300 dark:border-l-blue-600",
+    badge: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+    border: "border-blue-500/30",
+    dot: "bg-blue-500",
   },
   SUPERVISOR: {
-    badge: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40",
-    row: "border-l-4 border-l-emerald-300 dark:border-l-emerald-600",
+    badge: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+    border: "border-emerald-500/30",
+    dot: "bg-emerald-500",
   },
   SUPERVISEE: {
-    badge: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700/40",
-    row: "border-l-4 border-l-amber-300 dark:border-l-amber-600",
+    badge: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+    border: "border-amber-500/30",
+    dot: "bg-amber-500",
   },
 };
 
+
 export default function AdminPortalPage() {
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<TabType>("overview");
 
+  // User List & Filters
+  const [userList, setUserList] = useState<UserAccount[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("ALL");
+
+  // Supervisor Report Data for Chart & Breakdown
+  const [supervisorReport, setSupervisorReport] = useState<SupervisorReportItem[]>([]);
+  const [loadingReport, setLoadingReport] = useState(false);
+  const [expandedSupervisorId, setExpandedSupervisorId] = useState<string | null>(null);
+
+  // User Creation Form State
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
@@ -70,13 +143,11 @@ export default function AdminPortalPage() {
   const [createLoading, setCreateLoading] = useState(false);
   const [createStatus, setCreateStatus] = useState<{ success?: boolean; msg?: string } | null>(null);
 
-  const [userList, setUserList] = useState<User[]>([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-
+  // Export Loading
   const [exportingCSV, setExportingCSV] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
 
+  // Settings State
   const [allowedDomains, setAllowedDomains] = useState("");
   const [smtpHost, setSmtpHost] = useState("");
   const [smtpPort, setSmtpPort] = useState("");
@@ -86,10 +157,8 @@ export default function AdminPortalPage() {
   const [smtpFromName, setSmtpFromName] = useState("");
   const [smtpFromEmail, setSmtpFromEmail] = useState("");
   const [enableGroupSupervision, setEnableGroupSupervision] = useState(false);
-
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsStatus, setSettingsStatus] = useState<{ success?: boolean; msg?: string } | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
 
   const fetchSession = useCallback(async () => {
     try {
@@ -118,9 +187,22 @@ export default function AdminPortalPage() {
       const data = await res.json();
       if (data.success) setUserList(data.users);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to fetch users", err);
     } finally {
       setLoadingUsers(false);
+    }
+  }, []);
+
+  const fetchReport = useCallback(async () => {
+    setLoadingReport(true);
+    try {
+      const res = await fetch("/api/admin/report");
+      const data = await res.json();
+      if (data.success) setSupervisorReport(data.report);
+    } catch (err) {
+      console.error("Failed to fetch supervisor report", err);
+    } finally {
+      setLoadingReport(false);
     }
   }, []);
 
@@ -151,11 +233,12 @@ export default function AdminPortalPage() {
   useEffect(() => {
     if (currentUser) {
       fetchUsers();
+      fetchReport();
       if (currentUser.role === "SUPERADMIN") {
         fetchSettings();
       }
     }
-  }, [currentUser, fetchUsers, fetchSettings]);
+  }, [currentUser, fetchUsers, fetchReport, fetchSettings]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -174,13 +257,14 @@ export default function AdminPortalPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setCreateStatus({ success: true, msg: "User created successfully" });
+        setCreateStatus({ success: true, msg: `Account created successfully for ${newUserName}` });
         setNewUserName("");
         setNewUserEmail("");
         setNewUserPassword("");
         fetchUsers();
+        fetchReport();
       } else {
-        setCreateStatus({ success: false, msg: data.error || "Failed to create user" });
+        setCreateStatus({ success: false, msg: data.error || "Failed to create user account" });
       }
     } catch (err: any) {
       setCreateStatus({ success: false, msg: err.message || "Request failed" });
@@ -208,12 +292,12 @@ export default function AdminPortalPage() {
             { key: "SMTP_FROM_NAME", value: smtpFromName },
             { key: "SMTP_FROM_EMAIL", value: smtpFromEmail },
             { key: "ENABLE_GROUP_SUPERVISION", value: enableGroupSupervision ? "true" : "false" },
-          ]
+          ],
         }),
       });
       const data = await res.json();
       if (data.success) {
-        setSettingsStatus({ success: true, msg: "Settings saved successfully." });
+        setSettingsStatus({ success: true, msg: "System settings updated successfully." });
       } else {
         setSettingsStatus({ success: false, msg: data.error || "Failed to save settings." });
       }
@@ -221,7 +305,7 @@ export default function AdminPortalPage() {
       setSettingsStatus({ success: false, msg: err.message || "Request failed." });
     } finally {
       setSavingSettings(false);
-      setTimeout(() => setSettingsStatus(null), 3000);
+      setTimeout(() => setSettingsStatus(null), 4000);
     }
   };
 
@@ -230,19 +314,14 @@ export default function AdminPortalPage() {
     router.push("/login");
   };
 
-  const fetchReportData = async (): Promise<SupervisorReportItem[]> => {
-    const res = await fetch("/api/admin/report");
-    const data = await res.json();
-    if (!data.success) {
-      throw new Error(data.error || "Failed to fetch report data");
-    }
-    return data.report;
-  };
-
   const handleExportCSV = async () => {
     setExportingCSV(true);
     try {
-      const report = await fetchReportData();
+      const res = await fetch("/api/admin/report");
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Failed to fetch report data");
+      const report: SupervisorReportItem[] = data.report;
+
       const headers = [
         "Supervisor Name",
         "Supervisor Email",
@@ -299,7 +378,11 @@ export default function AdminPortalPage() {
   const handleExportPDF = async () => {
     setExportingPDF(true);
     try {
-      const report = await fetchReportData();
+      const res = await fetch("/api/admin/report");
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Failed to fetch report data");
+      const report: SupervisorReportItem[] = data.report;
+
       const { jsPDF } = await import("jspdf");
       const autoTable = (await import("jspdf-autotable")).default;
 
@@ -312,34 +395,27 @@ export default function AdminPortalPage() {
 
       if (report.length === 0) {
         doc.setFontSize(12);
-        doc.text("No supervisors found in system.", marginL, 100);
+        doc.text("No supervisors found in database.", marginL, 100);
       } else {
         report.forEach((sup, supIdx) => {
-          if (supIdx > 0) {
-            doc.addPage();
-          }
+          if (supIdx > 0) doc.addPage();
 
-          // Header block
           doc.setFontSize(8);
           doc.setFont("helvetica", "bold");
           doc.setTextColor(0);
           doc.text("STUDENT SUPERVISION APPLICATION — MASTER REPORT", marginL, 45);
 
-          // Top divider
           doc.setDrawColor(0);
           doc.setLineWidth(1.5);
           doc.line(marginL, 52, marginR, 52);
 
-          // Report title
           doc.setFontSize(16);
           doc.setFont("helvetica", "bold");
           doc.text(`Supervisor ${supIdx + 1} of ${report.length}: ${sup.name}`, marginL, 76);
 
-          // Sub-divider
           doc.setLineWidth(0.5);
           doc.line(marginL, 84, marginR, 84);
 
-          // Metadata block
           const metaStartY = 100;
           const lineH = 16;
           const interests = sup.areasOfInterest.length > 0 ? sup.areasOfInterest.join(", ") : "General Supervision";
@@ -365,7 +441,6 @@ export default function AdminPortalPage() {
 
           const tableStartY = metaStartY + lineH * 5 + interestHeight + 10;
 
-          // Section divider above table
           doc.setLineWidth(0.5);
           doc.line(marginL, tableStartY - 6, marginR, tableStartY - 6);
 
@@ -419,7 +494,6 @@ export default function AdminPortalPage() {
         });
       }
 
-      // Two-pass page footers for all pages
       const totalPages = doc.getNumberOfPages();
       for (let pg = 1; pg <= totalPages; pg++) {
         doc.setPage(pg);
@@ -446,24 +520,32 @@ export default function AdminPortalPage() {
     }
   };
 
-  const filteredUsers = userList.filter(
-    (u) =>
+  // Filtered Users computation
+  const filteredUsers = userList.filter((u) => {
+    const matchesSearch =
       u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.role.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+      u.role.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = roleFilter === "ALL" || u.role === roleFilter;
+    return matchesSearch && matchesRole;
+  });
 
   const counts = {
     total: userList.length,
     supervisees: userList.filter((u) => u.role === "SUPERVISEE").length,
     supervisors: userList.filter((u) => u.role === "SUPERVISOR").length,
     admins: userList.filter((u) => u.role === "ADMIN" || u.role === "SUPERADMIN").length,
+    totalAssignedStudents: supervisorReport.reduce((acc, curr) => acc + curr.studentCount, 0),
   };
+
+  // Calculate Chart Data based on database supervisor report
+  const maxStudentCount = Math.max(...supervisorReport.map((s) => s.studentCount), 1);
 
   if (loading || !currentUser) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <p className="text-sm text-muted-foreground animate-pulse">Loading Admin Portal…</p>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center space-y-3">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground font-medium">Loading Administration Workspace…</p>
       </div>
     );
   }
@@ -471,178 +553,476 @@ export default function AdminPortalPage() {
   const roleStyle = ROLE_STYLES[currentUser.role] ?? ROLE_STYLES.ADMIN;
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      {/* Header */}
+    <div className="min-h-screen bg-muted/20 text-foreground flex flex-col">
+      {/* Top Navbar */}
       <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-4 sm:px-8 h-14 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-              ← Home
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors font-medium"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Home
             </Link>
             <Separator orientation="vertical" className="h-4" />
-            <span className="font-semibold text-sm">Admin Portal</span>
-            <Badge variant="outline" className={`text-[10px] uppercase font-mono ${roleStyle.badge}`}>
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-xs shadow-sm">
+                S
+              </div>
+              <span className="font-bold text-sm tracking-tight">Admin Portal</span>
+            </div>
+            <Badge variant="outline" className={`text-[10px] font-mono uppercase font-semibold ${roleStyle.badge}`}>
               {currentUser.role}
             </Badge>
           </div>
+
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground hidden sm:block">
-              {currentUser.name}
-            </span>
-            <Button variant="outline" size="sm" onClick={handleLogout} className="text-xs">
-              Log Out
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted text-xs font-medium">
+              <UserCheck className="h-3.5 w-3.5 text-primary" />
+              <span>{currentUser.name}</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLogout}
+              className="text-xs font-medium gap-1.5 hover:bg-destructive/10 hover:text-destructive transition-colors"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Log Out</span>
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-8 py-8 space-y-8">
-
-        {/* Page title and Export Actions */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      {/* Main Content */}
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-8 py-8 space-y-8">
+        
+        {/* Page Hero Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight">System Administration</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight">System Management & Analytics</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Provision accounts, manage user roles, and generate system reports.
+              Monitor supervisor workloads, manage user accounts, and configure system rules.
             </p>
           </div>
-          <div className="flex gap-2 shrink-0">
+
+          {/* Export Action Buttons */}
+          <div className="flex items-center gap-2 shrink-0">
             <Button
               variant="outline"
               size="sm"
               onClick={handleExportCSV}
               disabled={exportingCSV}
-              className="text-xs font-semibold"
+              className="text-xs font-semibold gap-1.5 shadow-sm"
             >
-              {exportingCSV ? "Exporting..." : "↓ Export CSV"}
+              {exportingCSV ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />}
+              <span>{exportingCSV ? "Exporting CSV…" : "Export CSV"}</span>
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={handleExportPDF}
               disabled={exportingPDF}
-              className="text-xs font-semibold"
+              className="text-xs font-semibold gap-1.5 shadow-sm"
             >
-              {exportingPDF ? "Exporting..." : "↓ Export PDF"}
+              {exportingPDF ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5 text-rose-600" />}
+              <span>{exportingPDF ? "Exporting PDF…" : "Export PDF"}</span>
             </Button>
           </div>
         </div>
 
-        <Separator />
-
-        {/* Stats */}
+        {/* Quick KPI Stat Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            { label: "Total Accounts", value: counts.total, cls: "border-l-4 border-l-primary/40" },
-            { label: "Supervisees", value: counts.supervisees, cls: "border-l-4 border-l-amber-300 dark:border-l-amber-600" },
-            { label: "Supervisors", value: counts.supervisors, cls: "border-l-4 border-l-emerald-300 dark:border-l-emerald-600" },
-            { label: "Admins", value: counts.admins, cls: "border-l-4 border-l-violet-300 dark:border-l-violet-600" },
-          ].map((s) => (
-            <Card key={s.label} className={`shadow-sm ${s.cls}`}>
-              <CardHeader className="p-4 pb-2">
-                <CardDescription className="text-xs font-semibold uppercase">{s.label}</CardDescription>
-                <CardTitle className="text-3xl font-extrabold">{s.value}</CardTitle>
-              </CardHeader>
-            </Card>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-          {/* Create user form */}
-          <Card className="shadow-sm lg:col-span-1">
-            <CardHeader className="pb-4">
-              <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono text-primary border-primary/30 bg-primary/5 mb-1">
-                Account Provisioning
-              </Badge>
-              <CardTitle className="text-base font-bold">Create User Account</CardTitle>
-              <CardDescription className="text-xs">Register a new user in the system.</CardDescription>
+          <Card className="shadow-sm border-l-4 border-l-primary">
+            <CardHeader className="p-4 pb-2">
+              <CardDescription className="text-xs font-semibold uppercase tracking-wider flex items-center justify-between">
+                Total Accounts
+                <Users className="h-4 w-4 text-primary opacity-80" />
+              </CardDescription>
+              <CardTitle className="text-3xl font-extrabold">{counts.total}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {createStatus && (
-                <div className={`p-3 rounded-lg border text-xs font-medium ${
-                  createStatus.success
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-700/40 dark:text-emerald-300"
-                    : "bg-destructive/10 border-destructive/25 text-destructive"
-                }`}>
-                  {createStatus.msg}
-                </div>
-              )}
-              <form onSubmit={handleCreateUser} className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="name" className="text-xs font-semibold uppercase tracking-wide">Full Name</Label>
-                  <Input id="name" required value={newUserName} onChange={(e) => setNewUserName(e.target.value)} placeholder="e.g. Jordan Miller" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="email" className="text-xs font-semibold uppercase tracking-wide">Email Address</Label>
-                  <Input id="email" type="email" required value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} placeholder="jordan@example.com" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="pwd" className="text-xs font-semibold uppercase tracking-wide">Password</Label>
-                  <Input id="pwd" type="password" required value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} placeholder="••••••••" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="role" className="text-xs font-semibold uppercase tracking-wide">Role</Label>
-                  <Select value={newUserRole} onValueChange={(val) => val && setNewUserRole(val)}>
-                    <SelectTrigger id="role">
-                      <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="SUPERVISEE">Supervisee</SelectItem>
-                      <SelectItem value="SUPERVISOR">Supervisor</SelectItem>
-                      {currentUser.role === "SUPERADMIN" && (
-                        <>
-                          <SelectItem value="ADMIN">Admin</SelectItem>
-                          <SelectItem value="SUPERADMIN">SuperAdmin</SelectItem>
-                        </>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button type="submit" disabled={createLoading} className="w-full font-semibold mt-1">
-                  {createLoading ? "Creating…" : "+ Create User"}
-                </Button>
-              </form>
-            </CardContent>
           </Card>
 
-          {/* User directory */}
-          <Card className="shadow-sm lg:col-span-2">
-            <CardHeader className="pb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <Card className="shadow-sm border-l-4 border-l-amber-500">
+            <CardHeader className="p-4 pb-2">
+              <CardDescription className="text-xs font-semibold uppercase tracking-wider flex items-center justify-between">
+                Supervisees
+                <User className="h-4 w-4 text-amber-500 opacity-80" />
+              </CardDescription>
+              <CardTitle className="text-3xl font-extrabold">{counts.supervisees}</CardTitle>
+            </CardHeader>
+          </Card>
+
+          <Card className="shadow-sm border-l-4 border-l-emerald-500">
+            <CardHeader className="p-4 pb-2">
+              <CardDescription className="text-xs font-semibold uppercase tracking-wider flex items-center justify-between">
+                Supervisors
+                <ShieldCheck className="h-4 w-4 text-emerald-500 opacity-80" />
+              </CardDescription>
+              <CardTitle className="text-3xl font-extrabold">{counts.supervisors}</CardTitle>
+            </CardHeader>
+          </Card>
+
+          <Card className="shadow-sm border-l-4 border-l-purple-500">
+            <CardHeader className="p-4 pb-2">
+              <CardDescription className="text-xs font-semibold uppercase tracking-wider flex items-center justify-between">
+                Active Pairings
+                <BookOpen className="h-4 w-4 text-purple-500 opacity-80" />
+              </CardDescription>
+              <CardTitle className="text-3xl font-extrabold">{counts.totalAssignedStudents}</CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
+
+        {/* Tabbed Navigation Bar */}
+        <div className="flex border-b border-border overflow-x-auto no-scrollbar gap-2 sm:gap-6">
+          <button
+            onClick={() => setActiveTab("overview")}
+            className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "overview"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <BarChart3 className="h-4 w-4" />
+            Overview & Analytics
+          </button>
+
+          <button
+            onClick={() => setActiveTab("users")}
+            className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "users"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Users className="h-4 w-4" />
+            User Directory ({userList.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab("add-user")}
+            className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "add-user"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <UserPlus className="h-4 w-4" />
+            Account Provisioning
+          </button>
+
+          {currentUser.role === "SUPERADMIN" && (
+            <button
+              onClick={() => setActiveTab("settings")}
+              className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === "settings"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Settings className="h-4 w-4" />
+              System Settings
+            </button>
+          )}
+        </div>
+
+        {/* TAB 1: OVERVIEW & SUPERVISOR ANALYTICS */}
+        {activeTab === "overview" && (
+          <div className="space-y-6">
+            
+            {/* Top Chart Section: Supervisor Workload */}
+            <Card className="shadow-sm border-border/60">
+              <CardHeader className="pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono text-emerald-600 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/10 mb-1">
+                    Live Database Metrics
+                  </Badge>
+                  <CardTitle className="text-lg font-bold flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5 text-primary" />
+                    Supervisor Workload & Capacity Overview
+                  </CardTitle>
+                  <CardDescription className="text-xs mt-0.5">
+                    Real-time student assignment distribution per supervisor.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchReport}
+                  disabled={loadingReport}
+                  className="text-xs shrink-0 gap-1.5"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loadingReport ? "animate-spin" : ""}`} />
+                  Refresh Analytics
+                </Button>
+              </CardHeader>
+
+              <CardContent className="space-y-6">
+                {loadingReport ? (
+                  <div className="py-12 flex flex-col items-center justify-center space-y-2">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    <p className="text-xs text-muted-foreground">Fetching live supervisor data…</p>
+                  </div>
+                ) : supervisorReport.length === 0 ? (
+                  <div className="py-12 text-center border border-dashed rounded-lg p-6 space-y-3">
+                    <ShieldCheck className="h-10 w-10 text-muted-foreground mx-auto opacity-50" />
+                    <p className="text-sm font-semibold text-muted-foreground">No supervisor accounts found in database.</p>
+                    <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                      Provision new supervisor accounts via the <strong>Account Provisioning</strong> tab to view workload analytics.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {(() => {
+                      const sortedReport = [...supervisorReport].sort((a, b) => b.studentCount - a.studentCount);
+                      return (
+                        <>
+                          {/* Shadcn UI Bar Chart */}
+                          <ChartContainer config={supervisorChartConfig} className="aspect-auto h-[160px] w-full">
+                            <BarChart
+                              accessibilityLayer
+                              data={sortedReport.map((s) => ({ name: s.name, students: s.studentCount }))}
+                              margin={{
+                                top: 20,
+                              }}
+                            >
+                              <CartesianGrid vertical={false} />
+                              <XAxis
+                                dataKey="name"
+                                tickLine={false}
+                                tickMargin={10}
+                                axisLine={false}
+                                tickFormatter={(val) => (val.length > 14 ? `${val.slice(0, 12)}…` : val)}
+                              />
+                              <ChartTooltip
+                                cursor={false}
+                                content={<ChartTooltipContent hideLabel />}
+                              />
+                              <Bar dataKey="students" radius={[8, 8, 0, 0]}>
+                                {sortedReport.map((sup, index) => {
+                                  const barColor =
+                                    sup.studentCount >= 5
+                                      ? "#ef4444" // Red for high student load
+                                      : sup.studentCount >= 3
+                                      ? "#f97316" // Orange for moderate load
+                                      : "#10b981"; // Green for lower student load
+
+                                  return <Cell key={`cell-${index}`} fill={barColor} />;
+                                })}
+                                <LabelList
+                                  position="top"
+                                  offset={12}
+                                  className="fill-foreground font-semibold"
+                                  fontSize={12}
+                                />
+                              </Bar>
+                            </BarChart>
+                          </ChartContainer>
+
+                          {/* Supervisor Workload Cards */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                            {sortedReport.map((sup) => (
+                              <div key={sup.id} className="p-3.5 rounded-lg bg-card border border-border/50 space-y-1.5 hover:border-border transition-all">
+                                <div>
+                                  <h3 className="font-bold text-sm text-foreground truncate">{sup.name}</h3>
+                                  <p className="text-xs text-muted-foreground font-mono truncate">{sup.email}</p>
+                                </div>
+                                <div className="pt-1 flex items-center justify-between text-xs font-semibold text-primary">
+                                  <span>Assigned Supervisees:</span>
+                                  <span className="text-sm font-extrabold">{sup.studentCount}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Supervisor Breakdown Accordion Cards */}
+            <div className="space-y-3">
+              <h2 className="text-lg font-bold tracking-tight">Supervisor Detail Breakdown</h2>
+              {[...supervisorReport]
+                .sort((a, b) => b.studentCount - a.studentCount)
+                .map((sup) => {
+                const isExpanded = expandedSupervisorId === sup.id;
+
+                return (
+                  <Card key={sup.id} className="shadow-sm border-border/60 transition-all">
+                    <CardHeader
+                      className="p-4 cursor-pointer hover:bg-muted/30 transition-colors flex flex-row items-center justify-between"
+                      onClick={() => setExpandedSupervisorId(isExpanded ? null : sup.id)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center font-bold text-xs">
+                          {sup.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <CardTitle className="text-sm font-bold">{sup.name}</CardTitle>
+                          <CardDescription className="text-xs font-mono">{sup.email}</CardDescription>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="text-right hidden sm:block">
+                          <span className="text-xs font-semibold text-foreground">
+                            {sup.studentCount} Assigned Student{sup.studentCount === 1 ? "" : "s"}
+                          </span>
+                          <p className="text-[11px] text-muted-foreground">
+                            {sup.areasOfInterest.length > 0 ? sup.areasOfInterest.slice(0, 2).join(", ") : "General"}
+                          </p>
+                        </div>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </CardHeader>
+
+                    {isExpanded && (
+                      <CardContent className="p-4 pt-0 border-t border-border/40 bg-muted/10 space-y-4">
+                        <div className="pt-3">
+                          <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mb-2">
+                            Areas of Expertise / Interest
+                          </h4>
+                          <div className="flex flex-wrap gap-1.5">
+                            {sup.areasOfInterest.length > 0 ? (
+                              sup.areasOfInterest.map((interest, i) => (
+                                <Badge key={i} variant="secondary" className="text-xs font-normal">
+                                  {interest}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic">No topics specified</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
+                            Assigned Supervisees ({sup.students.length})
+                          </h4>
+                          {sup.students.length === 0 ? (
+                            <p className="text-xs text-muted-foreground italic py-3 border border-dashed rounded-md text-center">
+                              No students currently assigned to this supervisor.
+                            </p>
+                          ) : (
+                            <div className="divide-y divide-border/50 border border-border/50 rounded-lg overflow-hidden bg-card">
+                              {sup.students.map((st, i) => (
+                                <div key={i} className="p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                  <div className="space-y-0.5">
+                                    <div className="font-semibold text-foreground">{st.name}</div>
+                                    <div className="text-muted-foreground font-mono text-[11px]">{st.email}</div>
+                                    {st.statement && (
+                                      <p className="text-muted-foreground italic text-[11px] mt-1 bg-muted/30 p-1.5 rounded">
+                                        &ldquo;{st.statement}&rdquo;
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="text-right shrink-0">
+                                    <span className="text-[11px] text-muted-foreground font-mono">Assigned: {st.assignedDate}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: USER DIRECTORY */}
+        {activeTab === "users" && (
+          <Card className="shadow-sm border-border/60">
+            <CardHeader className="pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <CardTitle className="text-base font-bold">User Directory</CardTitle>
-                <CardDescription className="text-xs">{userList.length} registered accounts</CardDescription>
+                <CardTitle className="text-lg font-bold">User Account Directory</CardTitle>
+                <CardDescription className="text-xs">
+                  Manage registered accounts, view permissions, and search users.
+                </CardDescription>
               </div>
-              <Button variant="outline" size="sm" onClick={fetchUsers} className="text-xs shrink-0">
-                Refresh
+              <Button variant="outline" size="sm" onClick={fetchUsers} disabled={loadingUsers} className="text-xs shrink-0 gap-1.5">
+                <RefreshCw className={`h-3.5 w-3.5 ${loadingUsers ? "animate-spin" : ""}`} />
+                Refresh List
               </Button>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by name, email or role…"
-                className="text-xs"
-              />
+
+            <CardContent className="space-y-4">
+              {/* Search & Filter Chips Bar */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by name, email, or role…"
+                    className="pl-10 text-xs"
+                  />
+                </div>
+
+                {/* Role Filters */}
+                <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
+                  {["ALL", "SUPERVISEE", "SUPERVISOR", "ADMIN", "SUPERADMIN"].map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setRoleFilter(r)}
+                      className={`text-xs px-2.5 py-1.5 rounded-md font-medium transition-colors cursor-pointer ${
+                        roleFilter === r
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "bg-muted text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {r === "ALL" ? "All Roles" : r.charAt(0) + r.slice(1).toLowerCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* User Directory Cards */}
               {loadingUsers ? (
-                <p className="text-xs text-muted-foreground py-8 text-center">Loading…</p>
+                <div className="py-12 text-center space-y-2">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto" />
+                  <p className="text-xs text-muted-foreground">Loading accounts…</p>
+                </div>
               ) : filteredUsers.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-8 text-center border border-dashed rounded-lg">
-                  No matching accounts found.
-                </p>
+                <div className="py-12 text-center border border-dashed rounded-lg space-y-2">
+                  <User className="h-8 w-8 text-muted-foreground mx-auto opacity-50" />
+                  <p className="text-xs font-semibold text-muted-foreground">No accounts match your criteria.</p>
+                </div>
               ) : (
-                <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
+                <div className="rounded-lg border border-border overflow-hidden divide-y divide-border/60 bg-card">
                   {filteredUsers.map((usr) => {
-                    const s = ROLE_STYLES[usr.role] ?? { badge: "", row: "" };
+                    const style = ROLE_STYLES[usr.role] ?? ROLE_STYLES.SUPERVISEE;
+
                     return (
-                      <div key={usr.id} className={`px-4 py-3 flex items-center justify-between hover:bg-muted/40 transition-colors ${s.row}`}>
-                        <div className="space-y-0.5">
-                          <div className="font-semibold text-sm">{usr.name}</div>
-                          <div className="text-xs text-muted-foreground font-mono">{usr.email}</div>
+                      <div
+                        key={usr.id}
+                        className="px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/40 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-xs text-primary">
+                            {usr.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-sm text-foreground">{usr.name}</div>
+                            <div className="text-xs text-muted-foreground font-mono">{usr.email}</div>
+                          </div>
                         </div>
-                        <Badge variant="outline" className={`text-[10px] uppercase font-mono font-semibold ${s.badge}`}>
-                          {usr.role}
-                        </Badge>
+
+                        <div className="flex items-center gap-3">
+                          <Badge variant="outline" className={`text-[10px] uppercase font-mono font-semibold ${style.badge}`}>
+                            {usr.role}
+                          </Badge>
+                        </div>
                       </div>
                     );
                   })}
@@ -650,148 +1030,314 @@ export default function AdminPortalPage() {
               )}
             </CardContent>
           </Card>
+        )}
 
-        </div>
-
-        {currentUser.role === "SUPERADMIN" && (
-          <div className="mt-6 grid grid-cols-1 gap-6">
-            <Card className="shadow-sm">
-              <CardHeader className="pb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div>
-                  <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono text-destructive border-destructive/30 bg-destructive/5 mb-1">
-                    SuperAdmin Only
-                  </Badge>
-                  <CardTitle className="text-base font-bold">System Settings</CardTitle>
-                  <CardDescription className="text-xs">Configure global application settings and access controls.</CardDescription>
+        {/* TAB 3: ACCOUNT PROVISIONING */}
+        {activeTab === "add-user" && (
+          <div className="max-w-2xl mx-auto w-full">
+            <Card className="shadow-sm border-border/60">
+              <CardHeader className="pb-4 text-center">
+                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary border border-primary/20 mb-2">
+                  <UserPlus className="h-5 w-5" />
                 </div>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => setShowSettings(!showSettings)} 
-                  className="text-xs shrink-0"
-                >
-                  {showSettings ? "Hide Settings" : "Show Settings"}
-                </Button>
+                <CardTitle className="text-xl font-bold">Account Provisioning</CardTitle>
+                <CardDescription className="text-xs">
+                  Create and register new system accounts for Supervisees, Supervisors, or Admins.
+                </CardDescription>
               </CardHeader>
-              
-              {showSettings && (
-                <CardContent className="space-y-4">
-                  {settingsStatus && (
-                    <div className={`p-3 rounded-lg border text-xs font-medium ${
-                      settingsStatus.success
-                        ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-700/40 dark:text-emerald-300"
-                        : "bg-destructive/10 border-destructive/25 text-destructive"
-                    }`}>
-                      {settingsStatus.msg}
+
+              <CardContent className="space-y-4">
+                {createStatus && (
+                  <div
+                    className={`flex items-center gap-2 p-3.5 rounded-lg border text-xs font-medium ${
+                      createStatus.success
+                        ? "bg-emerald-500/15 border-emerald-500/25 text-emerald-600 dark:text-emerald-400"
+                        : "bg-destructive/15 border-destructive/25 text-destructive"
+                    }`}
+                  >
+                    {createStatus.success ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
+                    <span>{createStatus.msg}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleCreateUser} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="name">Full Name</Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="name"
+                        required
+                        value={newUserName}
+                        onChange={(e) => setNewUserName(e.target.value)}
+                        placeholder="e.g. Jordan Miller"
+                        className="pl-10"
+                        disabled={createLoading}
+                      />
                     </div>
-                  )}
-                  <form onSubmit={handleSaveSettings} className="space-y-6 max-w-2xl">
-                    
-                    {/* Registration Settings */}
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-semibold border-b pb-1">Registration Controls</h3>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="allowedDomains" className="text-xs font-semibold uppercase tracking-wide">
-                          Allowed Registration Domains
-                        </Label>
-                        <Input 
-                          id="allowedDomains" 
-                          value={allowedDomains} 
-                          onChange={(e) => setAllowedDomains(e.target.value)} 
-                          placeholder="example.com, test.edu (Leave blank for no restrictions)" 
-                        />
-                        <p className="text-[11px] text-muted-foreground mt-1">
-                          Comma-separated list of domains that are permitted to self-register via Email OTP.
-                        </p>
-                      </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="email">Email Address</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="email"
+                        type="email"
+                        required
+                        value={newUserEmail}
+                        onChange={(e) => setNewUserEmail(e.target.value)}
+                        placeholder="jordan@example.com"
+                        className="pl-10"
+                        disabled={createLoading}
+                      />
                     </div>
+                  </div>
 
-                    {/* Features Settings */}
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-semibold border-b pb-1">Features</h3>
-                      <div className="space-y-1.5 pt-2">
-                        <Label htmlFor="enableGroupSupervision" className="text-xs font-semibold uppercase tracking-wide">Enable Group Supervision</Label>
-                        <Select value={enableGroupSupervision ? "true" : "false"} onValueChange={(val) => setEnableGroupSupervision(val === "true")}>
-                          <SelectTrigger id="enableGroupSupervision">
-                            <SelectValue placeholder="Select" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="false">Disabled</SelectItem>
-                            <SelectItem value="true">Enabled</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <p className="text-[11px] text-muted-foreground mt-1">
-                          Allow supervisees to form groups and apply for supervision collectively.
-                        </p>
-                      </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="pwd">Initial Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="pwd"
+                        type="password"
+                        required
+                        value={newUserPassword}
+                        onChange={(e) => setNewUserPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="pl-10"
+                        disabled={createLoading}
+                      />
                     </div>
+                  </div>
 
-                    {/* SMTP Settings */}
-                    <div className="space-y-3">
-                      <h3 className="text-sm font-semibold border-b pb-1">SMTP Configuration</h3>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <Label htmlFor="smtpHost" className="text-xs font-semibold uppercase tracking-wide">SMTP Host</Label>
-                          <Input id="smtpHost" value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="127.0.0.1" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label htmlFor="smtpPort" className="text-xs font-semibold uppercase tracking-wide">SMTP Port</Label>
-                          <Input id="smtpPort" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="e.g. 587 or 2525" />
-                        </div>
-                      </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="role">Account Role</Label>
+                    <Select value={newUserRole} onValueChange={(val) => val && setNewUserRole(val)}>
+                      <SelectTrigger id="role" disabled={createLoading}>
+                        <SelectValue placeholder="Select role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="SUPERVISEE">Supervisee (Student)</SelectItem>
+                        <SelectItem value="SUPERVISOR">Supervisor (Academic/Professional)</SelectItem>
+                        {currentUser.role === "SUPERADMIN" && (
+                          <>
+                            <SelectItem value="ADMIN">System Administrator</SelectItem>
+                            <SelectItem value="SUPERADMIN">SuperAdmin</SelectItem>
+                          </>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <Label htmlFor="smtpUser" className="text-xs font-semibold uppercase tracking-wide">SMTP Username</Label>
-                          <Input id="smtpUser" value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} placeholder="Leave blank if none" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label htmlFor="smtpPass" className="text-xs font-semibold uppercase tracking-wide">SMTP Password</Label>
-                          <Input id="smtpPass" type="password" value={smtpPass} onChange={(e) => setSmtpPass(e.target.value)} placeholder="Leave blank to keep unchanged" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <Label htmlFor="smtpFromName" className="text-xs font-semibold uppercase tracking-wide">Sender Name</Label>
-                          <Input id="smtpFromName" value={smtpFromName} onChange={(e) => setSmtpFromName(e.target.value)} placeholder="Supervision App" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label htmlFor="smtpFromEmail" className="text-xs font-semibold uppercase tracking-wide">Sender Email</Label>
-                          <Input id="smtpFromEmail" value={smtpFromEmail} onChange={(e) => setSmtpFromEmail(e.target.value)} placeholder="noreply@example.com" />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5 pt-2">
-                        <Label htmlFor="smtpSecure" className="text-xs font-semibold uppercase tracking-wide">Connection Security</Label>
-                        <Select value={smtpSecure ? "true" : "false"} onValueChange={(val) => setSmtpSecure(val === "true")}>
-                          <SelectTrigger id="smtpSecure">
-                            <SelectValue placeholder="Select security" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="false">Standard / STARTTLS (Port 587/25)</SelectItem>
-                            <SelectItem value="true">TLS / SSL (Port 465)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <p className="text-[11px] text-muted-foreground mt-1">
-                          Use TLS/SSL for port 465. Use Standard for port 587 (NodeMailer upgrades to STARTTLS automatically).
-                        </p>
-                      </div>
-
-                    </div>
-
-                    <Button type="submit" disabled={savingSettings} className="font-semibold mt-4">
-                      {savingSettings ? "Saving Settings…" : "Save All Settings"}
-                    </Button>
-                  </form>
-                </CardContent>
-              )}
+                  <Button type="submit" disabled={createLoading} className="w-full font-semibold mt-2">
+                    {createLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating Account…
+                      </>
+                    ) : (
+                      "+ Provision Account"
+                    )}
+                  </Button>
+                </form>
+              </CardContent>
             </Card>
           </div>
         )}
 
+        {/* TAB 4: SYSTEM SETTINGS (SUPERADMIN ONLY) */}
+        {activeTab === "settings" && currentUser.role === "SUPERADMIN" && (
+          <Card className="shadow-sm border-border/60 max-w-3xl mx-auto w-full">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Badge variant="outline" className="text-[10px] uppercase font-mono text-purple-600 border-purple-500/30 bg-purple-500/10">
+                  SuperAdmin Only
+                </Badge>
+              </div>
+              <CardTitle className="text-xl font-bold flex items-center gap-2">
+                <Sliders className="h-5 w-5 text-primary" />
+                Global System Settings
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Configure allowed domains, application features, and SMTP server integrations.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-6">
+              {settingsStatus && (
+                <div
+                  className={`flex items-center gap-2 p-3.5 rounded-lg border text-xs font-medium ${
+                    settingsStatus.success
+                      ? "bg-emerald-500/15 border-emerald-500/25 text-emerald-600 dark:text-emerald-400"
+                      : "bg-destructive/15 border-destructive/25 text-destructive"
+                  }`}
+                >
+                  {settingsStatus.success ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
+                  <span>{settingsStatus.msg}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSaveSettings} className="space-y-6">
+                {/* Registration Domain Controls */}
+                <div className="space-y-3 p-4 rounded-lg bg-muted/20 border border-border/50">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Globe className="h-4 w-4 text-primary" />
+                    Registration Domain Controls
+                  </h3>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="allowedDomains" className="text-xs">Allowed Registration Domains</Label>
+                    <Input
+                      id="allowedDomains"
+                      value={allowedDomains}
+                      onChange={(e) => setAllowedDomains(e.target.value)}
+                      placeholder="e.g. example.com, university.edu (Leave blank for unrestricted)"
+                      disabled={savingSettings}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Comma-separated list of email domains permitted to register via Email OTP.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Feature Controls */}
+                <div className="space-y-3 p-4 rounded-lg bg-muted/20 border border-border/50">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-primary" />
+                    Application Feature Flags
+                  </h3>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="enableGroupSupervision" className="text-xs">Enable Group Supervision</Label>
+                    <Select
+                      value={enableGroupSupervision ? "true" : "false"}
+                      onValueChange={(val) => setEnableGroupSupervision(val === "true")}
+                      disabled={savingSettings}
+                    >
+                      <SelectTrigger id="enableGroupSupervision">
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="false">Disabled</SelectItem>
+                        <SelectItem value="true">Enabled</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">
+                      Permit supervisees to apply for supervision as collaborative student groups.
+                    </p>
+                  </div>
+                </div>
+
+                {/* SMTP Email Server Configuration */}
+                <div className="space-y-3 p-4 rounded-lg bg-muted/20 border border-border/50">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-primary" />
+                    SMTP Email Server Configuration
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="smtpHost" className="text-xs">SMTP Host</Label>
+                      <Input
+                        id="smtpHost"
+                        value={smtpHost}
+                        onChange={(e) => setSmtpHost(e.target.value)}
+                        placeholder="smtp.example.com"
+                        disabled={savingSettings}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="smtpPort" className="text-xs">SMTP Port</Label>
+                      <Input
+                        id="smtpPort"
+                        value={smtpPort}
+                        onChange={(e) => setSmtpPort(e.target.value)}
+                        placeholder="587 or 465"
+                        disabled={savingSettings}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="smtpUser" className="text-xs">SMTP Username</Label>
+                      <Input
+                        id="smtpUser"
+                        value={smtpUser}
+                        onChange={(e) => setSmtpUser(e.target.value)}
+                        placeholder="Username"
+                        disabled={savingSettings}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="smtpPass" className="text-xs">SMTP Password</Label>
+                      <Input
+                        id="smtpPass"
+                        type="password"
+                        value={smtpPass}
+                        onChange={(e) => setSmtpPass(e.target.value)}
+                        placeholder="••••••••"
+                        disabled={savingSettings}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="smtpFromName" className="text-xs">Sender Name</Label>
+                      <Input
+                        id="smtpFromName"
+                        value={smtpFromName}
+                        onChange={(e) => setSmtpFromName(e.target.value)}
+                        placeholder="Supervision Portal"
+                        disabled={savingSettings}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="smtpFromEmail" className="text-xs">Sender Email</Label>
+                      <Input
+                        id="smtpFromEmail"
+                        value={smtpFromEmail}
+                        onChange={(e) => setSmtpFromEmail(e.target.value)}
+                        placeholder="noreply@example.com"
+                        disabled={savingSettings}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="smtpSecure" className="text-xs">Connection Security</Label>
+                    <Select
+                      value={smtpSecure ? "true" : "false"}
+                      onValueChange={(val) => setSmtpSecure(val === "true")}
+                      disabled={savingSettings}
+                    >
+                      <SelectTrigger id="smtpSecure">
+                        <SelectValue placeholder="Select connection security" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="false">Standard / STARTTLS (Port 587)</SelectItem>
+                        <SelectItem value="true">SSL / TLS (Port 465)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <Button type="submit" disabled={savingSettings} className="w-full font-semibold">
+                  {savingSettings ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving Settings…
+                    </>
+                  ) : (
+                    "Save All System Settings"
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
       </main>
     </div>
   );
 }
+
