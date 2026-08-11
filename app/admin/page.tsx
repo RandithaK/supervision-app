@@ -25,6 +25,20 @@ interface User {
   createdAt?: string;
 }
 
+interface SupervisorReportItem {
+  id: string;
+  name: string;
+  email: string;
+  areasOfInterest: string[];
+  studentCount: number;
+  students: Array<{
+    name: string;
+    email: string;
+    assignedDate: string;
+    statement: string;
+  }>;
+}
+
 const ROLE_STYLES: Record<string, { badge: string; row: string }> = {
   SUPERADMIN: {
     badge: "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-700/40",
@@ -59,6 +73,9 @@ export default function AdminPortalPage() {
   const [userList, setUserList] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  const [exportingCSV, setExportingCSV] = useState(false);
+  const [exportingPDF, setExportingPDF] = useState(false);
 
   const fetchSession = useCallback(async () => {
     try {
@@ -126,6 +143,222 @@ export default function AdminPortalPage() {
     router.push("/login");
   };
 
+  const fetchReportData = async (): Promise<SupervisorReportItem[]> => {
+    const res = await fetch("/api/admin/report");
+    const data = await res.json();
+    if (!data.success) {
+      throw new Error(data.error || "Failed to fetch report data");
+    }
+    return data.report;
+  };
+
+  const handleExportCSV = async () => {
+    setExportingCSV(true);
+    try {
+      const report = await fetchReportData();
+      const headers = [
+        "Supervisor Name",
+        "Supervisor Email",
+        "Areas of Interest",
+        "Student Name",
+        "Student Email",
+        "Assigned Date",
+        "Statement of Interest",
+      ];
+      const rows: string[][] = [];
+
+      for (const sup of report) {
+        const interests = sup.areasOfInterest.join("; ");
+        if (sup.students.length === 0) {
+          rows.push([
+            sup.name,
+            sup.email,
+            `"${interests.replace(/"/g, '""')}"`,
+            "No assigned students",
+            "",
+            "",
+            "",
+          ]);
+        } else {
+          for (const st of sup.students) {
+            rows.push([
+              sup.name,
+              sup.email,
+              `"${interests.replace(/"/g, '""')}"`,
+              st.name,
+              st.email,
+              st.assignedDate,
+              `"${st.statement.replace(/"/g, '""')}"`,
+            ]);
+          }
+        }
+      }
+
+      const lines = [headers.join(","), ...rows.map((r) => r.join(","))];
+      const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `admin-supervisors-report-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err.message || "Failed to export CSV");
+    } finally {
+      setExportingCSV(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    setExportingPDF(true);
+    try {
+      const report = await fetchReportData();
+      const { jsPDF } = await import("jspdf");
+      const autoTable = (await import("jspdf-autotable")).default;
+
+      const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const marginL = 50;
+      const marginR = pageW - 50;
+      const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+
+      if (report.length === 0) {
+        doc.setFontSize(12);
+        doc.text("No supervisors found in system.", marginL, 100);
+      } else {
+        report.forEach((sup, supIdx) => {
+          if (supIdx > 0) {
+            doc.addPage();
+          }
+
+          // Header block
+          doc.setFontSize(8);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(0);
+          doc.text("STUDENT SUPERVISION APPLICATION — MASTER REPORT", marginL, 45);
+
+          // Top divider
+          doc.setDrawColor(0);
+          doc.setLineWidth(1.5);
+          doc.line(marginL, 52, marginR, 52);
+
+          // Report title
+          doc.setFontSize(16);
+          doc.setFont("helvetica", "bold");
+          doc.text(`Supervisor ${supIdx + 1} of ${report.length}: ${sup.name}`, marginL, 76);
+
+          // Sub-divider
+          doc.setLineWidth(0.5);
+          doc.line(marginL, 84, marginR, 84);
+
+          // Metadata block
+          const metaStartY = 100;
+          const lineH = 16;
+          const interests = sup.areasOfInterest.length > 0 ? sup.areasOfInterest.join(", ") : "General Supervision";
+
+          doc.setFontSize(9);
+          doc.setFont("helvetica", "bold");
+          doc.text("Supervisor Name:", marginL, metaStartY);
+          doc.text("Email Address:", marginL, metaStartY + lineH);
+          doc.text("Areas of Interest:", marginL, metaStartY + lineH * 2);
+          doc.text("Date Generated:", marginL, metaStartY + lineH * 3);
+          doc.text("Allocated Students:", marginL, metaStartY + lineH * 4);
+
+          doc.setFont("helvetica", "normal");
+          doc.text(sup.name, marginL + 115, metaStartY);
+          doc.text(sup.email, marginL + 115, metaStartY + lineH);
+
+          const interestLines = doc.splitTextToSize(interests, marginR - marginL - 120);
+          doc.text(interestLines, marginL + 115, metaStartY + lineH * 2);
+          const interestHeight = (interestLines.length - 1) * 12;
+
+          doc.text(today, marginL + 115, metaStartY + lineH * 3 + interestHeight);
+          doc.text(String(sup.studentCount), marginL + 115, metaStartY + lineH * 4 + interestHeight);
+
+          const tableStartY = metaStartY + lineH * 5 + interestHeight + 10;
+
+          // Section divider above table
+          doc.setLineWidth(0.5);
+          doc.line(marginL, tableStartY - 6, marginR, tableStartY - 6);
+
+          if (sup.students.length === 0) {
+            doc.setFontSize(9);
+            doc.setFont("helvetica", "italic");
+            doc.text("No allocated students for this supervisor.", marginL, tableStartY + 15);
+          } else {
+            autoTable(doc, {
+              startY: tableStartY,
+              margin: { left: marginL, right: 50 },
+              head: [["#", "Student Name", "Student Email", "Assigned", "Statement of Interest"]],
+              body: sup.students.map((st, i) => [
+                String(i + 1),
+                st.name,
+                st.email,
+                st.assignedDate,
+                st.statement || "(no statement provided)",
+              ]),
+              headStyles: {
+                fillColor: false as any,
+                textColor: 0,
+                fontStyle: "bold",
+                fontSize: 8.5,
+                lineColor: 0,
+                lineWidth: 0.5,
+              },
+              bodyStyles: {
+                fillColor: false as any,
+                textColor: 0,
+                fontSize: 8.5,
+                lineColor: 180,
+                lineWidth: 0.3,
+              },
+              alternateRowStyles: {
+                fillColor: [240, 240, 240] as any,
+              },
+              styles: {
+                overflow: "linebreak",
+                cellPadding: 5,
+              },
+              columnStyles: {
+                0: { cellWidth: 22, halign: "center" },
+                1: { cellWidth: 95 },
+                2: { cellWidth: 125 },
+                3: { cellWidth: 65, halign: "center" },
+                4: { cellWidth: "auto" },
+              },
+            });
+          }
+        });
+      }
+
+      // Two-pass page footers for all pages
+      const totalPages = doc.getNumberOfPages();
+      for (let pg = 1; pg <= totalPages; pg++) {
+        doc.setPage(pg);
+        doc.setDrawColor(0);
+        doc.setLineWidth(0.5);
+        doc.line(marginL, pageH - 38, marginR, pageH - 38);
+
+        doc.setFontSize(7.5);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(80);
+
+        doc.text("Student Supervision Application — Admin Master Report", marginL, pageH - 24);
+        doc.text(`Page ${pg} of ${totalPages}`, pageW / 2, pageH - 24, { align: "center" });
+        doc.text("Confidential", marginR, pageH - 24, { align: "right" });
+
+        doc.setTextColor(0);
+      }
+
+      doc.save(`admin-supervisors-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err: any) {
+      alert(err.message || "Failed to export PDF");
+    } finally {
+      setExportingPDF(false);
+    }
+  };
+
   const filteredUsers = userList.filter(
     (u) =>
       u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -178,12 +411,34 @@ export default function AdminPortalPage() {
 
       <main className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-8 py-8 space-y-8">
 
-        {/* Page title */}
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">System Administration</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Provision accounts, manage user roles, and browse the system directory.
-          </p>
+        {/* Page title and Export Actions */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight">System Administration</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Provision accounts, manage user roles, and generate system reports.
+            </p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCSV}
+              disabled={exportingCSV}
+              className="text-xs font-semibold"
+            >
+              {exportingCSV ? "Exporting..." : "↓ Export CSV"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportPDF}
+              disabled={exportingPDF}
+              className="text-xs font-semibold"
+            >
+              {exportingPDF ? "Exporting..." : "↓ Export PDF"}
+            </Button>
+          </div>
         </div>
 
         <Separator />
