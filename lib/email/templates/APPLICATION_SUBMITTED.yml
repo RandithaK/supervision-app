@@ -1,0 +1,19 @@
+subject: "Application Received (ID: {{applicationId}})"
+title: "Supervision Application Received"
+badge:
+  text: "Application Received"
+  color: "secondary"
+content: |
+  <p>Hello <strong>{{userName}}</strong>,</p>
+  <p>Thank you for submitting your supervision application. Our administration team has received your request and is reviewing your application.</p>
+  <p>You will receive an email update once your application has been processed.</p>
+details:
+  - label: "Application ID"
+    value: "{{applicationId}}"
+  - label: "Submitted On"
+    value: "{{submittedAt}}"
+  - label: "Status"
+    value: "UNDER REVIEW"
+cta:
+  label: "View Application Status"
+  url: "{{dashboardUrl}}"

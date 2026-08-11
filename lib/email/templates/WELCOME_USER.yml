@@ -1,0 +1,19 @@
+subject: "Welcome to Supervision App, {{userName}}"
+title: "Welcome to Supervision App!"
+badge:
+  text: "Account Created"
+  color: "primary"
+content: |
+  <p>Hello <strong>{{userName}}</strong>,</p>
+  <p>Welcome to the Supervision App platform! Your account has been successfully created with the role of <strong>{{userRole}}</strong>.</p>
+  <p>You can now log in to manage your supervision sessions, submit applications, and collaborate seamlessly.</p>
+details:
+  - label: "Full Name"
+    value: "{{userName}}"
+  - label: "Email Address"
+    value: "{{userEmail}}"
+  - label: "Assigned Role"
+    value: "{{userRole}}"
+cta:
+  label: "Log In to Account"
+  url: "{{loginUrl}}"

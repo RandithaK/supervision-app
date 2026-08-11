@@ -1,0 +1,20 @@
+subject: "[SYSTEM {{severity}}] {{alertTitle}}"
+title: "System Alert: {{alertTitle}}"
+badge:
+  text: "Severity: {{severity}}"
+  color: "{{badgeColor}}" # We will map severity to color in code or pass it directly
+content: |
+  <p>An automated system alert has been triggered on your Supervision App environment:</p>
+  <div style="background-color: #f8fafc; border-left: 4px solid var(--border-color, #3b82f6); padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
+    <p style="margin: 0; font-weight: 600; color: #1e293b;">{{alertMessage}}</p>
+  </div>
+details:
+  - label: "Alert Title"
+    value: "{{alertTitle}}"
+  - label: "Severity Level"
+    value: "{{severity}}"
+  - label: "Timestamp"
+    value: "{{timestamp}}"
+cta:
+  label: "Open Admin Portal"
+  url: "{{actionUrl}}"

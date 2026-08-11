@@ -1,0 +1,19 @@
+subject: "Application Status Update: {{status}}"
+title: "Application Status Updated: {{status}}"
+badge:
+  text: "{{status}}"
+  color: "{{badgeColor}}" # We will pass badgeColor from the engine or payload, or handle it dynamically
+content: |
+  <p>Hello <strong>{{userName}}</strong>,</p>
+  <p>Your supervision application status has been updated to <strong>{{status}}</strong>.</p>
+  <p><strong>Reviewer Comments:</strong> {{reviewerNotes}}</p>
+details:
+  - label: "Updated On"
+    value: "{{updatedAt}}"
+  - label: "Current Status"
+    value: "{{status}}"
+  - label: "Notes"
+    value: "{{reviewerNotes}}"
+cta:
+  label: "Go to Dashboard"
+  url: "{{actionUrl}}"

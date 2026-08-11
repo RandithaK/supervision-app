@@ -8,6 +8,7 @@ import {
 import { UserRole } from "@/lib/db/entities/User";
 import { ApplicationStatus } from "@/lib/db/entities/SupervisionApplication";
 import { getAuthUser } from "@/lib/api-auth";
+import { EmailService } from "@/lib/email";
 
 // GET /api/applications
 export async function GET(request: Request) {
@@ -128,6 +129,20 @@ export async function POST(request: Request) {
 
     await appRepo.save(newApp);
 
+    // Dispatch non-blocking APPLICATION_SUBMITTED email to Supervisee
+    EmailService.sendEvent({
+      eventType: "APPLICATION_SUBMITTED",
+      to: authUser.email,
+      payload: {
+        userName: authUser.name,
+        applicationId: newApp.id,
+        submittedAt: new Date().toLocaleDateString(),
+        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisee`,
+      }
+    }).catch((err) => {
+      console.error("Failed to send application submitted email:", err);
+    });
+
     return NextResponse.json(
       {
         success: true,
@@ -187,6 +202,10 @@ export async function PATCH(request: Request) {
       );
     }
 
+    const userRepo = await getUserRepository();
+    const supervisee = await userRepo.findOneBy({ id: application.superviseeId });
+    const supervisor = await userRepo.findOneBy({ id: application.supervisorId });
+
     if (status === ApplicationStatus.ACCEPTED) {
       application.status = ApplicationStatus.ACCEPTED;
       await appRepo.save(application);
@@ -221,6 +240,50 @@ export async function PATCH(request: Request) {
         }
       }
 
+      // Dispatch non-blocking APPLICATION_STATUS_UPDATED & ASSIGNMENT_CREATED emails
+      if (supervisee) {
+        EmailService.sendEvent({
+          eventType: "APPLICATION_STATUS_UPDATED",
+          to: supervisee.email,
+          payload: {
+            userName: supervisee.name,
+            status: "APPROVED",
+            badgeColor: "green",
+            reviewerNotes: "Your application has been accepted.",
+            updatedAt: new Date().toLocaleDateString(),
+            actionUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisee`,
+          }
+        }).catch(console.error);
+
+        if (supervisor) {
+          EmailService.sendEvent({
+            eventType: "ASSIGNMENT_CREATED",
+            to: supervisee.email,
+            payload: {
+              recipientName: supervisee.name,
+              supervisorName: supervisor.name,
+              superviseeName: supervisee.name,
+              assignedDate: new Date().toLocaleDateString(),
+              notes: "Standard supervision match.",
+              dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}`,
+            }
+          }).catch(console.error);
+
+          EmailService.sendEvent({
+            eventType: "ASSIGNMENT_CREATED",
+            to: supervisor.email,
+            payload: {
+              recipientName: supervisor.name,
+              supervisorName: supervisor.name,
+              superviseeName: supervisee.name,
+              assignedDate: new Date().toLocaleDateString(),
+              notes: "Standard supervision match.",
+              dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}`,
+            }
+          }).catch(console.error);
+        }
+      }
+
       return NextResponse.json({
         success: true,
         message: "Application accepted. Supervisor assigned to supervisee and all other pending applications withdrawn.",
@@ -232,6 +295,21 @@ export async function PATCH(request: Request) {
       // REJECTED
       application.status = ApplicationStatus.REJECTED;
       await appRepo.save(application);
+
+      if (supervisee) {
+        EmailService.sendEvent({
+          eventType: "APPLICATION_STATUS_UPDATED",
+          to: supervisee.email,
+          payload: {
+            userName: supervisee.name,
+            status: "REJECTED",
+            badgeColor: "destructive",
+            reviewerNotes: "Your application was not accepted at this time.",
+            updatedAt: new Date().toLocaleDateString(),
+            actionUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisee`,
+          }
+        }).catch(console.error);
+      }
 
       return NextResponse.json({
         success: true,

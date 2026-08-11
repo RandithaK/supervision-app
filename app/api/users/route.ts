@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { getUserRepository } from "@/lib/db/data-source";
 import { UserRole } from "@/lib/db/entities/User";
 import { getAuthUser } from "@/lib/api-auth";
+import { EmailService } from "@/lib/email";
 
 // GET /api/users - List users (Admin/SuperAdmin only)
 export async function GET(request: Request) {
@@ -119,6 +120,20 @@ export async function POST(request: Request) {
     });
 
     await userRepository.save(newUser);
+
+    // Non-blocking email dispatch for key event WELCOME_USER
+    EmailService.sendEvent({
+      eventType: "WELCOME_USER",
+      to: newUser.email,
+      payload: {
+        userName: newUser.name,
+        userEmail: newUser.email,
+        userRole: newUser.role,
+        loginUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/login`,
+      }
+    }).catch((err) => {
+      console.error("Failed to send welcome email:", err);
+    });
 
     return NextResponse.json(
       {
