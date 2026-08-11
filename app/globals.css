@@ -85,8 +85,8 @@
   --input: oklch(0.91 0.006 80);
   --ring: oklch(0.56 0.16 280);
 
-  /* Softer rounded corners */
-  --radius: 0.65rem;
+  /* Bold, sharp corners */
+  --radius: 0rem;
 
   /* Charts */
   --chart-1: oklch(0.75 0.12 200);

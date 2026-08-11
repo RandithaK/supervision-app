@@ -88,6 +88,7 @@ export default function AdminPortalPage() {
 
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsStatus, setSettingsStatus] = useState<{ success?: boolean; msg?: string } | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   const fetchSession = useCallback(async () => {
     try {
@@ -652,104 +653,117 @@ export default function AdminPortalPage() {
         {currentUser.role === "SUPERADMIN" && (
           <div className="mt-6 grid grid-cols-1 gap-6">
             <Card className="shadow-sm">
-              <CardHeader className="pb-4">
-                <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono text-destructive border-destructive/30 bg-destructive/5 mb-1">
-                  SuperAdmin Only
-                </Badge>
-                <CardTitle className="text-base font-bold">System Settings</CardTitle>
-                <CardDescription className="text-xs">Configure global application settings and access controls.</CardDescription>
+              <CardHeader className="pb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono text-destructive border-destructive/30 bg-destructive/5 mb-1">
+                    SuperAdmin Only
+                  </Badge>
+                  <CardTitle className="text-base font-bold">System Settings</CardTitle>
+                  <CardDescription className="text-xs">Configure global application settings and access controls.</CardDescription>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setShowSettings(!showSettings)} 
+                  className="text-xs shrink-0"
+                >
+                  {showSettings ? "Hide Settings" : "Show Settings"}
+                </Button>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {settingsStatus && (
-                  <div className={`p-3 rounded-lg border text-xs font-medium ${
-                    settingsStatus.success
-                      ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-700/40 dark:text-emerald-300"
-                      : "bg-destructive/10 border-destructive/25 text-destructive"
-                  }`}>
-                    {settingsStatus.msg}
-                  </div>
-                )}
-                <form onSubmit={handleSaveSettings} className="space-y-6 max-w-2xl">
-                  
-                  {/* Registration Settings */}
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold border-b pb-1">Registration Controls</h3>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="allowedDomains" className="text-xs font-semibold uppercase tracking-wide">
-                        Allowed Registration Domains
-                      </Label>
-                      <Input 
-                        id="allowedDomains" 
-                        value={allowedDomains} 
-                        onChange={(e) => setAllowedDomains(e.target.value)} 
-                        placeholder="example.com, test.edu (Leave blank for no restrictions)" 
-                      />
-                      <p className="text-[11px] text-muted-foreground mt-1">
-                        Comma-separated list of domains that are permitted to self-register via Email OTP.
-                      </p>
+              
+              {showSettings && (
+                <CardContent className="space-y-4">
+                  {settingsStatus && (
+                    <div className={`p-3 rounded-lg border text-xs font-medium ${
+                      settingsStatus.success
+                        ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-700/40 dark:text-emerald-300"
+                        : "bg-destructive/10 border-destructive/25 text-destructive"
+                    }`}>
+                      {settingsStatus.msg}
                     </div>
-                  </div>
-
-                  {/* SMTP Settings */}
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold border-b pb-1">SMTP Configuration</h3>
+                  )}
+                  <form onSubmit={handleSaveSettings} className="space-y-6 max-w-2xl">
                     
-                    <div className="grid grid-cols-2 gap-4">
+                    {/* Registration Settings */}
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-semibold border-b pb-1">Registration Controls</h3>
                       <div className="space-y-1.5">
-                        <Label htmlFor="smtpHost" className="text-xs font-semibold uppercase tracking-wide">SMTP Host</Label>
-                        <Input id="smtpHost" value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="127.0.0.1" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="smtpPort" className="text-xs font-semibold uppercase tracking-wide">SMTP Port</Label>
-                        <Input id="smtpPort" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="2525" />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="smtpUser" className="text-xs font-semibold uppercase tracking-wide">SMTP Username</Label>
-                        <Input id="smtpUser" value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} placeholder="Leave blank if none" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="smtpPass" className="text-xs font-semibold uppercase tracking-wide">SMTP Password</Label>
-                        <Input id="smtpPass" type="password" value={smtpPass} onChange={(e) => setSmtpPass(e.target.value)} placeholder="Leave blank to keep unchanged" />
+                        <Label htmlFor="allowedDomains" className="text-xs font-semibold uppercase tracking-wide">
+                          Allowed Registration Domains
+                        </Label>
+                        <Input 
+                          id="allowedDomains" 
+                          value={allowedDomains} 
+                          onChange={(e) => setAllowedDomains(e.target.value)} 
+                          placeholder="example.com, test.edu (Leave blank for no restrictions)" 
+                        />
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Comma-separated list of domains that are permitted to self-register via Email OTP.
+                        </p>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="smtpFromName" className="text-xs font-semibold uppercase tracking-wide">Sender Name</Label>
-                        <Input id="smtpFromName" value={smtpFromName} onChange={(e) => setSmtpFromName(e.target.value)} placeholder="Supervision App" />
+                    {/* SMTP Settings */}
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-semibold border-b pb-1">SMTP Configuration</h3>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="smtpHost" className="text-xs font-semibold uppercase tracking-wide">SMTP Host</Label>
+                          <Input id="smtpHost" value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="127.0.0.1" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="smtpPort" className="text-xs font-semibold uppercase tracking-wide">SMTP Port</Label>
+                          <Input id="smtpPort" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="2525" />
+                        </div>
                       </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="smtpFromEmail" className="text-xs font-semibold uppercase tracking-wide">Sender Email</Label>
-                        <Input id="smtpFromEmail" value={smtpFromEmail} onChange={(e) => setSmtpFromEmail(e.target.value)} placeholder="noreply@example.com" />
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="smtpUser" className="text-xs font-semibold uppercase tracking-wide">SMTP Username</Label>
+                          <Input id="smtpUser" value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} placeholder="Leave blank if none" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="smtpPass" className="text-xs font-semibold uppercase tracking-wide">SMTP Password</Label>
+                          <Input id="smtpPass" type="password" value={smtpPass} onChange={(e) => setSmtpPass(e.target.value)} placeholder="Leave blank to keep unchanged" />
+                        </div>
                       </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="smtpFromName" className="text-xs font-semibold uppercase tracking-wide">Sender Name</Label>
+                          <Input id="smtpFromName" value={smtpFromName} onChange={(e) => setSmtpFromName(e.target.value)} placeholder="Supervision App" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="smtpFromEmail" className="text-xs font-semibold uppercase tracking-wide">Sender Email</Label>
+                          <Input id="smtpFromEmail" value={smtpFromEmail} onChange={(e) => setSmtpFromEmail(e.target.value)} placeholder="noreply@example.com" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 pt-2">
+                        <Label htmlFor="smtpSecure" className="text-xs font-semibold uppercase tracking-wide">Connection Security</Label>
+                        <Select value={smtpSecure ? "true" : "false"} onValueChange={(val) => setSmtpSecure(val === "true")}>
+                          <SelectTrigger id="smtpSecure">
+                            <SelectValue placeholder="Select security" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="false">Standard / STARTTLS (Port 587/25)</SelectItem>
+                            <SelectItem value="true">TLS / SSL (Port 465)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Use TLS/SSL for port 465. Use Standard for port 587 (NodeMailer upgrades to STARTTLS automatically).
+                        </p>
+                      </div>
+
                     </div>
 
-                    <div className="space-y-1.5 pt-2">
-                      <Label htmlFor="smtpSecure" className="text-xs font-semibold uppercase tracking-wide">Connection Security</Label>
-                      <Select value={smtpSecure ? "true" : "false"} onValueChange={(val) => setSmtpSecure(val === "true")}>
-                        <SelectTrigger id="smtpSecure">
-                          <SelectValue placeholder="Select security" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="false">Standard / STARTTLS (Port 587/25)</SelectItem>
-                          <SelectItem value="true">TLS / SSL (Port 465)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-[11px] text-muted-foreground mt-1">
-                        Use TLS/SSL for port 465. Use Standard for port 587 (NodeMailer upgrades to STARTTLS automatically).
-                      </p>
-                    </div>
-
-                  </div>
-
-                  <Button type="submit" disabled={savingSettings} className="font-semibold mt-4">
-                    {savingSettings ? "Saving Settings…" : "Save All Settings"}
-                  </Button>
-                </form>
-              </CardContent>
+                    <Button type="submit" disabled={savingSettings} className="font-semibold mt-4">
+                      {savingSettings ? "Saving Settings…" : "Save All Settings"}
+                    </Button>
+                  </form>
+                </CardContent>
+              )}
             </Card>
           </div>
         )}
