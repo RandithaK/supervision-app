@@ -4,6 +4,7 @@ import { User } from "./entities/User";
 import { SupervisionApplication } from "./entities/SupervisionApplication";
 import { SupervisionAssignment } from "./entities/SupervisionAssignment";
 import { OtpVerification } from "./entities/OtpVerification";
+import { AppSetting } from "./entities/AppSetting";
 import path from "path";
 
 const dbPath = path.resolve(process.cwd(), "sqlite.db");
@@ -14,12 +15,12 @@ declare global {
 }
 
 export async function getDataSource(): Promise<DataSource> {
-  const entities = [User, SupervisionApplication, SupervisionAssignment, OtpVerification];
+  const entities = [User, SupervisionApplication, SupervisionAssignment, OtpVerification, AppSetting];
 
   // Self-healing check for stale cached DataSource in dev mode HMR
   if (globalThis.__typeorm_datasource__) {
     const initializedNames = globalThis.__typeorm_datasource__.entityMetadatas.map((m) => m.name);
-    const hasAllEntities = ["User", "SupervisionApplication", "SupervisionAssignment", "OtpVerification"].every((name) =>
+    const hasAllEntities = ["User", "SupervisionApplication", "SupervisionAssignment", "OtpVerification", "AppSetting"].every((name) =>
       initializedNames.includes(name)
     );
 
@@ -75,4 +76,12 @@ export async function getOtpRepository(): Promise<Repository<OtpVerification>> {
     (m) => m.name === "OtpVerification" || m.tableName === "otp_verifications"
   );
   return dataSource.getRepository<OtpVerification>(meta ? meta.target : OtpVerification);
+}
+
+export async function getSettingRepository(): Promise<Repository<AppSetting>> {
+  const dataSource = await getDataSource();
+  const meta = dataSource.entityMetadatas.find(
+    (m) => m.name === "AppSetting" || m.tableName === "app_settings"
+  );
+  return dataSource.getRepository<AppSetting>(meta ? meta.target : AppSetting);
 }

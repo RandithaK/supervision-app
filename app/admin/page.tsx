@@ -77,6 +77,10 @@ export default function AdminPortalPage() {
   const [exportingCSV, setExportingCSV] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
 
+  const [allowedDomains, setAllowedDomains] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsStatus, setSettingsStatus] = useState<{ success?: boolean; msg?: string } | null>(null);
+
   const fetchSession = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/me");
@@ -110,8 +114,30 @@ export default function AdminPortalPage() {
     }
   }, []);
 
-  useEffect(() => { fetchSession(); }, [fetchSession]);
-  useEffect(() => { if (currentUser) fetchUsers(); }, [currentUser, fetchUsers]);
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/settings");
+      const data = await res.json();
+      if (data.success) {
+        setAllowedDomains(data.settings.ALLOWED_REGISTRATION_DOMAINS || "");
+      }
+    } catch (err) {
+      console.error("Failed to fetch settings", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSession();
+  }, [fetchSession]);
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchUsers();
+      if (currentUser.role === "SUPERADMIN") {
+        fetchSettings();
+      }
+    }
+  }, [currentUser, fetchUsers, fetchSettings]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,20 +147,54 @@ export default function AdminPortalPage() {
       const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newUserName, email: newUserEmail, password: newUserPassword, role: newUserRole }),
+        body: JSON.stringify({
+          name: newUserName,
+          email: newUserEmail,
+          password: newUserPassword,
+          role: newUserRole,
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        setCreateStatus({ success: true, msg: `"${data.user.name}" (${data.user.role}) created successfully.` });
-        setNewUserName(""); setNewUserEmail(""); setNewUserPassword(""); setNewUserRole("SUPERVISEE");
+        setCreateStatus({ success: true, msg: "User created successfully" });
+        setNewUserName("");
+        setNewUserEmail("");
+        setNewUserPassword("");
         fetchUsers();
       } else {
         setCreateStatus({ success: false, msg: data.error || "Failed to create user" });
       }
     } catch (err: any) {
-      setCreateStatus({ success: false, msg: err.message || "Network error" });
+      setCreateStatus({ success: false, msg: err.message || "Request failed" });
     } finally {
       setCreateLoading(false);
+    }
+  };
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingSettings(true);
+    setSettingsStatus(null);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "ALLOWED_REGISTRATION_DOMAINS",
+          value: allowedDomains,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSettingsStatus({ success: true, msg: "Settings saved successfully." });
+      } else {
+        setSettingsStatus({ success: false, msg: data.error || "Failed to save settings." });
+      }
+    } catch (err: any) {
+      setSettingsStatus({ success: false, msg: err.message || "Request failed." });
+    } finally {
+      setSavingSettings(false);
+      setTimeout(() => setSettingsStatus(null), 3000);
     }
   };
 
@@ -565,6 +625,51 @@ export default function AdminPortalPage() {
           </Card>
 
         </div>
+
+        {currentUser.role === "SUPERADMIN" && (
+          <div className="mt-6 grid grid-cols-1 gap-6">
+            <Card className="shadow-sm">
+              <CardHeader className="pb-4">
+                <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono text-destructive border-destructive/30 bg-destructive/5 mb-1">
+                  SuperAdmin Only
+                </Badge>
+                <CardTitle className="text-base font-bold">System Settings</CardTitle>
+                <CardDescription className="text-xs">Configure global application settings and access controls.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {settingsStatus && (
+                  <div className={`p-3 rounded-lg border text-xs font-medium ${
+                    settingsStatus.success
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-700/40 dark:text-emerald-300"
+                      : "bg-destructive/10 border-destructive/25 text-destructive"
+                  }`}>
+                    {settingsStatus.msg}
+                  </div>
+                )}
+                <form onSubmit={handleSaveSettings} className="space-y-3 max-w-xl">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="allowedDomains" className="text-xs font-semibold uppercase tracking-wide">
+                      Allowed Registration Domains
+                    </Label>
+                    <Input 
+                      id="allowedDomains" 
+                      value={allowedDomains} 
+                      onChange={(e) => setAllowedDomains(e.target.value)} 
+                      placeholder="example.com, test.edu (Leave blank for no restrictions)" 
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Comma-separated list of domains that are permitted to self-register via Email OTP.
+                    </p>
+                  </div>
+                  <Button type="submit" disabled={savingSettings} className="font-semibold mt-1">
+                    {savingSettings ? "Saving…" : "Save Settings"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
       </main>
     </div>
   );

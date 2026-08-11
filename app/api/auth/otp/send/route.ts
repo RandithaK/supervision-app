@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { NextResponse } from "next/server";
-import { getUserRepository, getOtpRepository } from "@/lib/db/data-source";
+import { getUserRepository, getOtpRepository, getSettingRepository } from "@/lib/db/data-source";
 import { EmailService } from "@/lib/email";
 
 // Generate a random 6-digit number
@@ -31,6 +31,22 @@ export async function POST(request: Request) {
         { success: false, error: "An account with this email already exists." },
         { status: 409 }
       );
+    }
+
+    // 1.5 Validate Domain Restrictions
+    const settingRepo = await getSettingRepository();
+    const domainSetting = await settingRepo.findOneBy({ key: "ALLOWED_REGISTRATION_DOMAINS" });
+    
+    if (domainSetting && domainSetting.value && domainSetting.value.trim().length > 0) {
+      const allowedDomains = domainSetting.value.split(",").map(d => d.trim().toLowerCase());
+      const emailDomain = normalizedEmail.split("@")[1];
+      
+      if (!emailDomain || !allowedDomains.includes(emailDomain)) {
+        return NextResponse.json(
+          { success: false, error: `Registration is restricted to the following domains: ${allowedDomains.join(", ")}` },
+          { status: 403 }
+        );
+      }
     }
 
     // 2. Generate OTP and calculate expiration (10 minutes)
