@@ -4,9 +4,12 @@ import {
   getApplicationRepository,
   getAssignmentRepository,
   getUserRepository,
+  getGroupRepository,
+  getGroupMemberRepository,
 } from "@/lib/db/data-source";
 import { UserRole } from "@/lib/db/entities/User";
 import { ApplicationStatus } from "@/lib/db/entities/SupervisionApplication";
+import { GroupMemberStatus } from "@/lib/db/entities/SuperviseeGroupMember";
 import { getAuthUser } from "@/lib/api-auth";
 import { EmailService } from "@/lib/email";
 
@@ -29,7 +32,7 @@ export async function GET(request: Request) {
 
     const applications = await appRepo.find({
       where: whereCondition,
-      relations: { supervisee: true, supervisor: true },
+      relations: { supervisee: true, supervisor: true, group: { createdBy: true, members: { user: true } } },
       order: { createdAt: "DESC" },
     });
 
@@ -47,6 +50,14 @@ export async function GET(request: Request) {
             name: a.supervisor.name,
             email: a.supervisor.email,
             areasOfInterest: a.supervisor.areasOfInterest,
+          }
+        : null,
+      group: a.group
+        ? {
+            id: a.group.id,
+            name: a.group.name,
+            createdBy: a.group.createdBy ? { id: a.group.createdBy.id, name: a.group.createdBy.name, email: a.group.createdBy.email } : null,
+            members: a.group.members ? a.group.members.map(m => ({ id: m.id, user: { name: m.user.name, email: m.user.email } })) : []
           }
         : null,
     }));
@@ -72,7 +83,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { supervisorId, message } = body;
+    const { supervisorId, message, groupId } = body;
 
     if (!supervisorId) {
       return NextResponse.json(
@@ -104,25 +115,59 @@ export async function POST(request: Request) {
       );
     }
 
-    const appRepo = await getApplicationRepository();
+    // Group application logic
+    let group = null;
+    let groupMembers = [];
+    if (groupId) {
+      const groupRepo = await getGroupRepository();
+      group = await groupRepo.findOne({ where: { id: groupId } });
+      if (!group) {
+        return NextResponse.json({ success: false, error: "Group not found." }, { status: 404 });
+      }
+      if (group.createdById !== authUser.id) {
+        return NextResponse.json({ success: false, error: "Only the group leader can apply on behalf of the group." }, { status: 403 });
+      }
 
-    // Check if already has a PENDING application to this supervisor
-    const existing = await appRepo.findOneBy({
-      superviseeId: authUser.id,
-      supervisorId: supervisorId,
-      status: ApplicationStatus.PENDING,
-    });
+      const groupMemberRepo = await getGroupMemberRepository();
+      groupMembers = await groupMemberRepo.find({ where: { groupId, status: GroupMemberStatus.ACTIVE } });
+      
+      // Check if any member already has an assignment
+      for (const member of groupMembers) {
+        const memberAssignment = await assignmentRepo.findOneBy({ superviseeId: member.userId });
+        if (memberAssignment) {
+          return NextResponse.json({ success: false, error: "One or more group members are already assigned to a supervisor." }, { status: 400 });
+        }
+      }
 
-    if (existing) {
-      return NextResponse.json(
-        { success: false, error: "You already have a pending application with this supervisor." },
-        { status: 409 }
-      );
+      const appRepo = await getApplicationRepository();
+      const existingGroupApp = await appRepo.findOneBy({
+        groupId,
+        supervisorId: supervisorId,
+        status: ApplicationStatus.PENDING,
+      });
+
+      if (existingGroupApp) {
+        return NextResponse.json({ success: false, error: "Your group already has a pending application with this supervisor." }, { status: 409 });
+      }
+    } else {
+      // Individual application check (if not applying as a group)
+      const appRepo = await getApplicationRepository();
+      const existing = await appRepo.findOneBy({
+        superviseeId: authUser.id,
+        supervisorId: supervisorId,
+        status: ApplicationStatus.PENDING,
+      });
+
+      if (existing) {
+        return NextResponse.json({ success: false, error: "You already have a pending application with this supervisor." }, { status: 409 });
+      }
     }
 
+    const appRepo = await getApplicationRepository();
     const newApp = appRepo.create({
       superviseeId: authUser.id,
       supervisorId: supervisorId,
+      groupId: groupId || null,
       message: message || "",
       status: ApplicationStatus.PENDING,
     });
@@ -229,86 +274,131 @@ export async function PATCH(request: Request) {
       application.status = ApplicationStatus.ACCEPTED;
       await appRepo.save(application);
 
-      // 1. Create SupervisionAssignment
       const assignmentRepo = await getAssignmentRepository();
-      let assignment = await assignmentRepo.findOneBy({
-        supervisorId: application.supervisorId,
-        superviseeId: application.superviseeId,
-      });
+      let pendingAppsToWithdraw = [];
 
-      if (!assignment) {
-        assignment = assignmentRepo.create({
+      if (application.groupId) {
+        // GROUP ACCEPTANCE
+        const groupMemberRepo = await getGroupMemberRepository();
+        const members = await groupMemberRepo.find({ where: { groupId: application.groupId, status: GroupMemberStatus.ACTIVE }, relations: { user: true } });
+        
+        const groupRepo = await getGroupRepository();
+        const group = await groupRepo.findOneBy({ id: application.groupId });
+        
+        for (const member of members) {
+          let assignment = await assignmentRepo.findOneBy({
+            supervisorId: application.supervisorId,
+            superviseeId: member.userId,
+          });
+
+          if (!assignment) {
+            assignment = assignmentRepo.create({
+              supervisorId: application.supervisorId,
+              superviseeId: member.userId,
+            });
+            await assignmentRepo.save(assignment);
+          }
+
+          // Find pending apps for this member to withdraw
+          const memberPendingApps = await appRepo.find({
+            where: {
+              superviseeId: member.userId,
+              status: ApplicationStatus.PENDING,
+            },
+          });
+          pendingAppsToWithdraw.push(...memberPendingApps);
+        }
+
+        // Send group email
+        if (supervisor && group) {
+          const leader = members.find(m => m.userId === group.createdById);
+          const leaderEmail = leader?.user.email;
+          const otherEmails = members.filter(m => m.userId !== group.createdById).map(m => m.user.email);
+          
+          if (leaderEmail) {
+            EmailService.sendEvent({
+              eventType: "GROUP_APPLICATION_ACCEPTED",
+              to: leaderEmail,
+              cc: otherEmails.length > 0 ? otherEmails : undefined,
+              payload: {
+                userName: leader.user.name, // leader name
+                supervisorName: supervisor.name,
+                dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisee`,
+              }
+            }).catch(console.error);
+          }
+        }
+
+      } else {
+        // INDIVIDUAL ACCEPTANCE
+        let assignment = await assignmentRepo.findOneBy({
           supervisorId: application.supervisorId,
           superviseeId: application.superviseeId,
         });
-        await assignmentRepo.save(assignment);
+
+        if (!assignment) {
+          assignment = assignmentRepo.create({
+            supervisorId: application.supervisorId,
+            superviseeId: application.superviseeId,
+          });
+          await assignmentRepo.save(assignment);
+        }
+
+        const pendingApps = await appRepo.find({
+          where: {
+            superviseeId: application.superviseeId,
+            status: ApplicationStatus.PENDING,
+          },
+        });
+        pendingAppsToWithdraw.push(...pendingApps);
+        
+        if (supervisee) {
+          EmailService.sendEvent({
+            eventType: "APPLICATION_STATUS_UPDATED",
+            to: supervisee.email,
+            payload: {
+              userName: supervisee.name,
+              status: "APPROVED",
+              badgeColor: "green",
+              reviewerNotes: "Your application has been accepted.",
+              updatedAt: new Date().toLocaleDateString(),
+              actionUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisee`,
+            }
+          }).catch(console.error);
+        }
       }
 
-      // 2. AUTOMATIC WITHDRAWAL: Find all OTHER pending applications by this supervisee and set status to WITHDRAWN
-      const pendingApps = await appRepo.find({
-        where: {
-          superviseeId: application.superviseeId,
-          status: ApplicationStatus.PENDING,
-        },
-      });
-
-      for (const otherApp of pendingApps) {
+      // WITHDRAW OTHER PENDING APPLICATIONS
+      let withdrawnCount = 0;
+      for (const otherApp of pendingAppsToWithdraw) {
         if (otherApp.id !== application.id) {
           otherApp.status = ApplicationStatus.WITHDRAWN;
           await appRepo.save(otherApp);
+          withdrawnCount++;
         }
       }
 
-      // Dispatch non-blocking APPLICATION_STATUS_UPDATED & ASSIGNMENT_CREATED emails
-      if (supervisee) {
+      // Supervisor notification (generic for both individual and group)
+      if (supervisor) {
         EmailService.sendEvent({
-          eventType: "APPLICATION_STATUS_UPDATED",
-          to: supervisee.email,
+          eventType: "ASSIGNMENT_CREATED",
+          to: supervisor.email,
           payload: {
-            userName: supervisee.name,
-            status: "APPROVED",
-            badgeColor: "green",
-            reviewerNotes: "Your application has been accepted.",
-            updatedAt: new Date().toLocaleDateString(),
-            actionUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisee`,
+            recipientName: supervisor.name,
+            supervisorName: supervisor.name,
+            superviseeName: application.groupId ? `Group members` : (supervisee?.name || "Supervisee"),
+            assignedDate: new Date().toLocaleDateString(),
+            notes: application.groupId ? "Group supervision match." : "Standard supervision match.",
+            dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}`,
           }
         }).catch(console.error);
-
-        if (supervisor) {
-          EmailService.sendEvent({
-            eventType: "ASSIGNMENT_CREATED",
-            to: supervisee.email,
-            payload: {
-              recipientName: supervisee.name,
-              supervisorName: supervisor.name,
-              superviseeName: supervisee.name,
-              assignedDate: new Date().toLocaleDateString(),
-              notes: "Standard supervision match.",
-              dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}`,
-            }
-          }).catch(console.error);
-
-          EmailService.sendEvent({
-            eventType: "ASSIGNMENT_CREATED",
-            to: supervisor.email,
-            payload: {
-              recipientName: supervisor.name,
-              supervisorName: supervisor.name,
-              superviseeName: supervisee.name,
-              assignedDate: new Date().toLocaleDateString(),
-              notes: "Standard supervision match.",
-              dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}`,
-            }
-          }).catch(console.error);
-        }
       }
 
       return NextResponse.json({
         success: true,
-        message: "Application accepted. Supervisor assigned to supervisee and all other pending applications withdrawn.",
+        message: "Application accepted.",
         application,
-        assignment,
-        withdrawnCount: pendingApps.length - 1 > 0 ? pendingApps.length - 1 : 0,
+        withdrawnCount,
       });
     } else {
       // REJECTED

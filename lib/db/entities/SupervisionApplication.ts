@@ -7,7 +7,8 @@ import {
   ManyToOne,
   JoinColumn,
 } from "typeorm";
-import { User } from "./User";
+import type { User } from "./User";
+import type { SuperviseeGroup } from "./SuperviseeGroup";
 
 export enum ApplicationStatus {
   PENDING = "PENDING",
@@ -24,19 +25,26 @@ export class SupervisionApplication {
   @Column({ type: "varchar" })
   superviseeId!: string;
 
-  @ManyToOne(() => User, { onDelete: "CASCADE" })
+  @ManyToOne("User", { onDelete: "CASCADE" })
   @JoinColumn({ name: "superviseeId" })
   supervisee!: User;
 
   @Column({ type: "varchar" })
   supervisorId!: string;
 
-  @ManyToOne(() => User, { onDelete: "CASCADE" })
+  @ManyToOne("User", { onDelete: "CASCADE" })
   @JoinColumn({ name: "supervisorId" })
   supervisor!: User;
 
   @Column({ type: "text", nullable: true })
   message?: string | null;
+
+  @Column({ type: "varchar", nullable: true })
+  groupId?: string | null;
+
+  @ManyToOne("SuperviseeGroup", { nullable: true, onDelete: "SET NULL" })
+  @JoinColumn({ name: "groupId" })
+  group?: SuperviseeGroup | null;
 
   @Column({
     type: "simple-enum",

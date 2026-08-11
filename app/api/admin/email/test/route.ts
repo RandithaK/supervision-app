@@ -137,6 +137,17 @@ export async function POST(request: Request) {
       OTP_VERIFICATION: {
         otp: "123456",
       },
+      GROUP_INVITATION: {
+        userName: "Test User",
+        groupName: "Test Group",
+        leaderName: "Test Leader",
+        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisee`,
+      },
+      GROUP_APPLICATION_ACCEPTED: {
+        userName: "Test Leader",
+        supervisorName: "Test Supervisor",
+        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisee`,
+      }
     };
 
     const finalPayload = {

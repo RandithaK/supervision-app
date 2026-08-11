@@ -85,6 +85,7 @@ export default function AdminPortalPage() {
   const [smtpPass, setSmtpPass] = useState("");
   const [smtpFromName, setSmtpFromName] = useState("");
   const [smtpFromEmail, setSmtpFromEmail] = useState("");
+  const [enableGroupSupervision, setEnableGroupSupervision] = useState(false);
 
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsStatus, setSettingsStatus] = useState<{ success?: boolean; msg?: string } | null>(null);
@@ -136,6 +137,7 @@ export default function AdminPortalPage() {
         setSmtpPass(data.settings.SMTP_PASS || "");
         setSmtpFromName(data.settings.SMTP_FROM_NAME || "");
         setSmtpFromEmail(data.settings.SMTP_FROM_EMAIL || "");
+        setEnableGroupSupervision(data.settings.ENABLE_GROUP_SUPERVISION === "true");
       }
     } catch (err) {
       console.error("Failed to fetch settings", err);
@@ -205,6 +207,7 @@ export default function AdminPortalPage() {
             { key: "SMTP_PASS", value: smtpPass },
             { key: "SMTP_FROM_NAME", value: smtpFromName },
             { key: "SMTP_FROM_EMAIL", value: smtpFromEmail },
+            { key: "ENABLE_GROUP_SUPERVISION", value: enableGroupSupervision ? "true" : "false" },
           ]
         }),
       });
@@ -699,6 +702,26 @@ export default function AdminPortalPage() {
                         />
                         <p className="text-[11px] text-muted-foreground mt-1">
                           Comma-separated list of domains that are permitted to self-register via Email OTP.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Features Settings */}
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-semibold border-b pb-1">Features</h3>
+                      <div className="space-y-1.5 pt-2">
+                        <Label htmlFor="enableGroupSupervision" className="text-xs font-semibold uppercase tracking-wide">Enable Group Supervision</Label>
+                        <Select value={enableGroupSupervision ? "true" : "false"} onValueChange={(val) => setEnableGroupSupervision(val === "true")}>
+                          <SelectTrigger id="enableGroupSupervision">
+                            <SelectValue placeholder="Select" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="false">Disabled</SelectItem>
+                            <SelectItem value="true">Enabled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Allow supervisees to form groups and apply for supervision collectively.
                         </p>
                       </div>
                     </div>

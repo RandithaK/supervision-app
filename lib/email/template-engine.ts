@@ -10,7 +10,9 @@ export type KeyEventType =
   | "ASSIGNMENT_CREATED"
   | "PASSWORD_RESET"
   | "SYSTEM_ALERT"
-  | "OTP_VERIFICATION";
+  | "OTP_VERIFICATION"
+  | "GROUP_INVITATION"
+  | "GROUP_APPLICATION_ACCEPTED";
 
 export interface RenderedEmail {
   subject: string;

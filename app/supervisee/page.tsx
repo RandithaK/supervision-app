@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface User {
   id: string;
@@ -31,11 +32,25 @@ interface Application {
   status: string;
   createdAt: string;
   supervisor: { id: string; name: string; email: string; areasOfInterest?: string[] | null } | null;
+  group?: Group | null;
 }
 
 interface Assignment {
   id: string;
   supervisor: { id: string; name: string; email: string } | null;
+}
+
+interface GroupMember {
+  id: string;
+  status: string;
+  user: { id: string; name: string; email: string };
+}
+
+interface Group {
+  id: string;
+  name: string;
+  createdById: string;
+  members: GroupMember[];
 }
 
 function statusStyle(status: string) {
@@ -53,7 +68,14 @@ export default function SuperviseePortalPage() {
   const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [groupEnabled, setGroupEnabled] = useState(false);
+  const [currentGroup, setCurrentGroup] = useState<Group | null>(null);
+  const [invitations, setInvitations] = useState<Group[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [applyAsGroup, setApplyAsGroup] = useState(false);
 
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -86,17 +108,27 @@ export default function SuperviseePortalPage() {
   const fetchPortalData = useCallback(async () => {
     setLoadingData(true);
     try {
-      const [superRes, appRes, assignRes] = await Promise.all([
+      const [superRes, appRes, assignRes, settingsRes, groupRes] = await Promise.all([
         fetch("/api/supervisors"),
         fetch("/api/applications"),
         fetch("/api/assignments"),
+        fetch("/api/settings/public"),
+        fetch("/api/groups"),
       ]);
       const superData = await superRes.json();
       const appData = await appRes.json();
       const assignData = await assignRes.json();
+      const settingsData = await settingsRes.json();
+      const groupData = await groupRes.json();
+      
       if (superData.success) setSupervisors(superData.supervisors);
       if (appData.success) setApplications(appData.applications);
       if (assignData.success) setAssignments(assignData.assignments);
+      if (settingsData.success) setGroupEnabled(settingsData.enabled);
+      if (groupData.success) {
+        setCurrentGroup(groupData.group);
+        setInvitations(groupData.invitations || []);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -136,15 +168,20 @@ export default function SuperviseePortalPage() {
     setSubmitting(true);
     setSubmitStatus(null);
     try {
+      const body: any = { supervisorId: selectedSupervisor.id, message: appMessage };
+      if (applyAsGroup && currentGroup) {
+        body.groupId = currentGroup.id;
+      }
       const res = await fetch("/api/applications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ supervisorId: selectedSupervisor.id, message: appMessage }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data.success) {
         setSubmitStatus({ success: true, msg: `Application to ${selectedSupervisor.name} submitted!` });
         setAppMessage("");
+        setApplyAsGroup(false);
         setSelectedSupervisor(null);
         fetchPortalData();
       } else {
@@ -154,6 +191,97 @@ export default function SuperviseePortalPage() {
       setSubmitStatus({ success: false, msg: err.message || "Network error" });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCreateGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newGroupName) return;
+    try {
+      const res = await fetch("/api/groups", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newGroupName }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewGroupName("");
+        fetchPortalData();
+      } else {
+        alert(data.error);
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleAddMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemberEmail || !currentGroup) return;
+    try {
+      const res = await fetch(`/api/groups/${currentGroup.id}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: newMemberEmail }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewMemberEmail("");
+        fetchPortalData();
+      } else {
+        alert(data.error);
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!currentGroup) return;
+    try {
+      const res = await fetch(`/api/groups/${currentGroup.id}/members`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      if (res.ok) {
+        if (userId === currentUser?.id) setCurrentGroup(null);
+        fetchPortalData();
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleDisbandGroup = async () => {
+    if (!currentGroup) return;
+    if (!confirm("Are you sure you want to disband this group?")) return;
+    try {
+      const res = await fetch(`/api/groups/${currentGroup.id}`, { method: "DELETE" });
+      if (res.ok) {
+        setCurrentGroup(null);
+        fetchPortalData();
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleInvitationAction = async (groupId: string, action: "ACCEPT" | "REJECT") => {
+    try {
+      const res = await fetch(`/api/groups/${groupId}/members`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchPortalData();
+      } else {
+        alert(data.error);
+      }
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -262,6 +390,14 @@ export default function SuperviseePortalPage() {
                     className="text-xs resize-none"
                   />
                 </div>
+                {groupEnabled && currentGroup && currentGroup.createdById === currentUser.id && (
+                  <div className="flex items-center space-x-2 pt-1 pb-1">
+                    <Checkbox id="apply-group" checked={applyAsGroup} onCheckedChange={(c) => setApplyAsGroup(c as boolean)} />
+                    <label htmlFor="apply-group" className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                      Apply on behalf of my group ({currentGroup.name})
+                    </label>
+                  </div>
+                )}
                 <Button type="submit" disabled={submitting} className="font-semibold text-xs">
                   {submitting ? "Submitting…" : "Submit Application →"}
                 </Button>
@@ -271,6 +407,104 @@ export default function SuperviseePortalPage() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          {/* Group Management Section (if enabled) */}
+          {groupEnabled && (
+            <Card className="shadow-sm lg:col-span-3">
+              <CardHeader className="pb-4">
+                <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700/40 mb-1">
+                  Group Supervision
+                </Badge>
+                <CardTitle className="text-base font-bold">My Group</CardTitle>
+                <CardDescription className="text-xs">Form a group to apply for supervision together.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {invitations.length > 0 && !currentGroup && (
+                  <div className="mb-6 space-y-3">
+                    <h3 className="text-sm font-semibold uppercase text-blue-700 dark:text-blue-400">Pending Invitations</h3>
+                    <div className="space-y-2">
+                      {invitations.map((inv) => (
+                        <div key={inv.id} className="p-3 rounded-lg border bg-blue-50/50 dark:bg-blue-900/10 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-bold">{inv.name}</p>
+                            <p className="text-[11px] text-muted-foreground">Invited by: {(inv as any).createdBy?.name}</p>
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <Button size="sm" onClick={() => handleInvitationAction(inv.id, "ACCEPT")} className="text-xs h-7 bg-emerald-600 hover:bg-emerald-500 text-white">Accept</Button>
+                            <Button size="sm" variant="outline" onClick={() => handleInvitationAction(inv.id, "REJECT")} className="text-xs h-7 text-red-600 border-red-200 hover:bg-red-50">Reject</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <Separator className="my-4" />
+                  </div>
+                )}
+                
+                {!currentGroup ? (
+                  <div className="flex items-center gap-4">
+                    <form onSubmit={handleCreateGroup} className="flex gap-2 w-full max-w-sm">
+                      <Input
+                        value={newGroupName}
+                        onChange={(e) => setNewGroupName(e.target.value)}
+                        placeholder="Group Name (e.g. Project Alpha)"
+                        className="text-xs"
+                      />
+                      <Button type="submit" size="sm" className="text-xs shrink-0 font-semibold bg-blue-600 hover:bg-blue-700 text-white">
+                        Create Group
+                      </Button>
+                    </form>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-sm">
+                        {currentGroup.name}
+                        {currentGroup.createdById === currentUser.id && (
+                          <Badge variant="secondary" className="ml-2 text-[10px]">Leader</Badge>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        {currentGroup.createdById === currentUser.id ? (
+                          <Button variant="destructive" size="sm" onClick={handleDisbandGroup} className="text-[10px] h-7">Disband</Button>
+                        ) : (
+                          <Button variant="outline" size="sm" onClick={() => handleRemoveMember(currentUser.id)} className="text-[10px] h-7">Leave</Button>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="rounded-md border p-2 bg-muted/20">
+                      <p className="text-[11px] font-semibold uppercase text-muted-foreground mb-2">Members ({currentGroup.members?.length || 0})</p>
+                      <ul className="space-y-2">
+                        {currentGroup.members?.map((m) => (
+                          <li key={m.id} className="flex items-center justify-between text-xs">
+                            <span>
+                              {m.user.name} <span className="text-muted-foreground">({m.user.email})</span>
+                              {m.status === "PENDING" && <Badge variant="outline" className="ml-2 text-[9px] uppercase bg-amber-50 text-amber-700 border-amber-200">Pending</Badge>}
+                            </span>
+                            {currentGroup.createdById === currentUser.id && m.user.id !== currentUser.id && (
+                              <button onClick={() => handleRemoveMember(m.user.id)} className="text-red-500 hover:underline text-[10px]">Remove</button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {currentGroup.createdById === currentUser.id && (
+                      <form onSubmit={handleAddMember} className="flex gap-2 max-w-sm">
+                        <Input
+                          value={newMemberEmail}
+                          onChange={(e) => setNewMemberEmail(e.target.value)}
+                          placeholder="Invitee Email Address"
+                          className="text-xs h-8"
+                        />
+                        <Button type="submit" size="sm" variant="secondary" className="text-xs h-8">Add Member</Button>
+                      </form>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Supervisor directory */}
           <Card className="shadow-sm lg:col-span-2">
@@ -411,9 +645,16 @@ export default function SuperviseePortalPage() {
                     <div key={app.id} className="p-3.5 space-y-1.5 text-xs">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-semibold truncate">{app.supervisor?.name ?? "Supervisor"}</span>
-                        <Badge variant="outline" className={`text-[10px] uppercase font-mono shrink-0 ${statusStyle(app.status)}`}>
-                          {app.status}
-                        </Badge>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {app.group && (
+                            <Badge variant="outline" className="text-[9px] bg-blue-50 text-blue-700 border-blue-200">
+                              GROUP
+                            </Badge>
+                          )}
+                          <Badge variant="outline" className={`text-[10px] uppercase font-mono shrink-0 ${statusStyle(app.status)}`}>
+                            {app.status}
+                          </Badge>
+                        </div>
                       </div>
                       {app.message && (
                         <p className="text-muted-foreground text-[11px] truncate italic">&ldquo;{app.message}&rdquo;</p>

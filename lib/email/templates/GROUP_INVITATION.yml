@@ -1,0 +1,11 @@
+subject: "Group Supervision Invitation: {{groupName}}"
+title: "Group Invitation"
+badge:
+  text: "INVITATION"
+  color: "blue"
+content: |
+  Hi {{userName}},<br><br>
+  You have been invited by **{{leaderName}}** to join the supervision group "**{{groupName}}**".
+cta:
+  label: "View Group in Portal"
+  url: "{{dashboardUrl}}"

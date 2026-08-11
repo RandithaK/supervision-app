@@ -1,0 +1,12 @@
+subject: "Group Supervision Request Accepted: {{supervisorName}}"
+title: "Group Application Accepted"
+badge:
+  text: "ACCEPTED"
+  color: "green"
+content: |
+  Hi {{userName}},<br><br>
+  Your group's supervision request to **{{supervisorName}}** has been **accepted**.<br><br>
+  All group members are now officially assigned to this supervisor. Any other pending applications you had have been automatically withdrawn.
+cta:
+  label: "View Dashboard"
+  url: "{{dashboardUrl}}"

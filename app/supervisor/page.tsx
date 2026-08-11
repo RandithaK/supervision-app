@@ -24,6 +24,12 @@ interface Application {
   status: string;
   createdAt: string;
   supervisee: { id: string; name: string; email: string } | null;
+  group?: {
+    id: string;
+    name: string;
+    createdBy: { name: string } | null;
+    members: { user: { name: string; email: string } }[];
+  } | null;
 }
 
 interface Assignment {
@@ -497,13 +503,38 @@ export default function SupervisorPortalPage() {
                     <div key={app.id} className="p-4 space-y-3 bg-amber-50/50 dark:bg-amber-900/10">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="font-semibold text-sm">{app.supervisee?.name ?? "Supervisee"}</p>
-                          <p className="text-xs text-muted-foreground font-mono">{app.supervisee?.email}</p>
+                          <p className="font-semibold text-sm">
+                            {app.group ? `${app.group.name} (Group)` : (app.supervisee?.name ?? "Supervisee")}
+                          </p>
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {app.group ? (
+                              <span>Applied by {app.group.createdBy?.name || "Leader"}</span>
+                            ) : (
+                              app.supervisee?.email
+                            )}
+                          </p>
                         </div>
-                        <Badge variant="outline" className="text-[10px] uppercase font-mono bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700/40">
-                          Pending
-                        </Badge>
+                        <div className="flex items-center gap-1">
+                          {app.group && (
+                            <Badge variant="outline" className="text-[10px] uppercase font-mono bg-blue-100 text-blue-700 border-blue-200">
+                              GROUP
+                            </Badge>
+                          )}
+                          <Badge variant="outline" className="text-[10px] uppercase font-mono bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700/40">
+                            Pending
+                          </Badge>
+                        </div>
                       </div>
+                      {app.group && app.group.members && (
+                        <div className="bg-blue-50/50 p-2 rounded text-xs border border-blue-100">
+                          <p className="font-semibold mb-1 text-blue-800">Group Members ({app.group.members.length}):</p>
+                          <ul className="list-disc list-inside text-blue-700 space-y-0.5">
+                            {app.group.members.map((m, i) => (
+                              <li key={i}>{m.user.name} <span className="text-muted-foreground ml-1 font-mono text-[10px]">{m.user.email}</span></li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                       {app.message && (
                         <p className="text-xs text-muted-foreground bg-background p-2.5 rounded border border-border italic">
                           &ldquo;{app.message}&rdquo;
@@ -538,7 +569,9 @@ export default function SupervisorPortalPage() {
                   <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
                     {[...acceptedApps, ...rejectedApps].map((app) => (
                       <div key={app.id} className="px-4 py-2.5 flex items-center justify-between text-xs">
-                        <span className="font-medium">{app.supervisee?.name ?? "Supervisee"}</span>
+                        <span className="font-medium">
+                          {app.group ? `${app.group.name} (Group)` : (app.supervisee?.name ?? "Supervisee")}
+                        </span>
                         <Badge variant="outline" className={`text-[10px] uppercase font-mono ${
                           app.status === "ACCEPTED"
                             ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40"
