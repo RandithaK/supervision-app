@@ -8,7 +8,8 @@ export type KeyEventType =
   | "APPLICATION_STATUS_UPDATED"
   | "ASSIGNMENT_CREATED"
   | "PASSWORD_RESET"
-  | "SYSTEM_ALERT";
+  | "SYSTEM_ALERT"
+  | "OTP_VERIFICATION";
 
 export interface RenderedEmail {
   subject: string;

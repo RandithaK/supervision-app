@@ -124,6 +124,9 @@ export async function POST(request: Request) {
         timestamp: new Date().toISOString(),
         actionUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/admin`,
       },
+      OTP_VERIFICATION: {
+        otp: "123456",
+      },
     };
 
     const finalPayload = {
