@@ -381,7 +381,8 @@ export default function AdminPortalPage() {
       const res = await fetch("/api/admin/report");
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Failed to fetch report data");
-      const report: SupervisorReportItem[] = data.report;
+      const rawReport: SupervisorReportItem[] = data.report;
+      const report = [...rawReport].sort((a, b) => b.studentCount - a.studentCount);
 
       const { jsPDF } = await import("jspdf");
       const autoTable = (await import("jspdf-autotable")).default;
@@ -391,14 +392,128 @@ export default function AdminPortalPage() {
       const pageH = doc.internal.pageSize.getHeight();
       const marginL = 50;
       const marginR = pageW - 50;
-      const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+      
+      // Computer local time down to the second
+      const localTimestamp = new Date().toLocaleString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      });
+      const totalStudents = report.reduce((acc, sup) => acc + sup.studentCount, 0);
 
       if (report.length === 0) {
         doc.setFontSize(12);
         doc.text("No supervisors found in database.", marginL, 100);
       } else {
+        // --- COVER PAGE (Executive Summary, Workload Chart & Directory Table) ---
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(0);
+        doc.text("STUDENT SUPERVISION APPLICATION — MASTER REPORT", marginL, 45);
+
+        doc.setDrawColor(0);
+        doc.setLineWidth(1.5);
+        doc.line(marginL, 52, marginR, 52);
+
+        doc.setFontSize(16);
+        doc.setFont("helvetica", "bold");
+        doc.text("EXECUTIVE SUMMARY & SUPERVISOR DIRECTORY", marginL, 75);
+
+        doc.setFontSize(8.5);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(80);
+        doc.text(`Generated on: ${localTimestamp}  |  Total Supervisors: ${report.length}  |  Total Active Pairings: ${totalStudents}`, marginL, 90);
+
+        doc.setLineWidth(0.5);
+        doc.setDrawColor(180);
+        doc.line(marginL, 98, marginR, 98);
+
+        // Vector Workload Bar Chart on Cover Page
+        const maxCount = Math.max(...report.map((s) => s.studentCount), 1);
+        const chartStartY = 114;
+        doc.setFontSize(9.5);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(30, 41, 59);
+        doc.text("SUPERVISOR WORKLOAD DISTRIBUTION CHART", marginL, chartStartY);
+
+        let currentY = chartStartY + 14;
+        const barMaxW = 270;
+
+        report.forEach((sup) => {
+          doc.setFontSize(8.5);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(40);
+          const truncatedName = sup.name.length > 18 ? sup.name.slice(0, 16) + "…" : sup.name;
+          doc.text(truncatedName, marginL, currentY + 9);
+
+          const barX = marginL + 110;
+          const barW = Math.max((sup.studentCount / maxCount) * barMaxW, sup.studentCount > 0 ? 6 : 0);
+
+          // Red (>=5), Orange (>=3), Green (<3)
+          if (sup.studentCount >= 5) {
+            doc.setFillColor(239, 68, 68);
+          } else if (sup.studentCount >= 3) {
+            doc.setFillColor(249, 115, 22);
+          } else {
+            doc.setFillColor(16, 185, 129);
+          }
+
+          if (barW > 0) {
+            doc.roundedRect(barX, currentY + 1, barW, 9, 2, 2, "F");
+          }
+
+          doc.setFontSize(8);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(30, 41, 59);
+          doc.text(String(sup.studentCount), barX + barW + 6, currentY + 9);
+
+          currentY += 15;
+        });
+
+        const summaryTableStartY = currentY + 12;
+
+        // Master Summary Directory Table
+        autoTable(doc, {
+          startY: summaryTableStartY,
+          margin: { left: marginL, right: 50 },
+          head: [["#", "Supervisor Name", "Email Address", "Areas of Interest", "Students"]],
+          body: report.map((sup, i) => [
+            String(i + 1),
+            sup.name,
+            sup.email,
+            sup.areasOfInterest.length > 0 ? sup.areasOfInterest.join(", ") : "General",
+            String(sup.studentCount),
+          ]),
+          headStyles: {
+            fillColor: [30, 41, 59] as any,
+            textColor: 255,
+            fontStyle: "bold",
+            fontSize: 8.5,
+          },
+          bodyStyles: {
+            textColor: 0,
+            fontSize: 8,
+            cellPadding: 5,
+          },
+          alternateRowStyles: {
+            fillColor: [245, 247, 250] as any,
+          },
+          columnStyles: {
+            0: { cellWidth: 22, halign: "center" },
+            1: { cellWidth: 110 },
+            2: { cellWidth: 135 },
+            3: { cellWidth: "auto" },
+            4: { cellWidth: 50, halign: "center" },
+          },
+        });
+
+        // --- INDIVIDUAL SUPERVISOR BREAKDOWN PAGES ---
         report.forEach((sup, supIdx) => {
-          if (supIdx > 0) doc.addPage();
+          doc.addPage();
 
           doc.setFontSize(8);
           doc.setFont("helvetica", "bold");
@@ -411,7 +526,7 @@ export default function AdminPortalPage() {
 
           doc.setFontSize(16);
           doc.setFont("helvetica", "bold");
-          doc.text(`Supervisor ${supIdx + 1} of ${report.length}: ${sup.name}`, marginL, 76);
+          doc.text(`Supervisor Breakdown (${supIdx + 1} of ${report.length}): ${sup.name}`, marginL, 76);
 
           doc.setLineWidth(0.5);
           doc.line(marginL, 84, marginR, 84);
@@ -436,7 +551,7 @@ export default function AdminPortalPage() {
           doc.text(interestLines, marginL + 115, metaStartY + lineH * 2);
           const interestHeight = (interestLines.length - 1) * 12;
 
-          doc.text(today, marginL + 115, metaStartY + lineH * 3 + interestHeight);
+          doc.text(localTimestamp, marginL + 115, metaStartY + lineH * 3 + interestHeight);
           doc.text(String(sup.studentCount), marginL + 115, metaStartY + lineH * 4 + interestHeight);
 
           const tableStartY = metaStartY + lineH * 5 + interestHeight + 10;
@@ -461,26 +576,18 @@ export default function AdminPortalPage() {
                 st.statement || "(no statement provided)",
               ]),
               headStyles: {
-                fillColor: false as any,
-                textColor: 0,
+                fillColor: [30, 41, 59] as any,
+                textColor: 255,
                 fontStyle: "bold",
                 fontSize: 8.5,
-                lineColor: 0,
-                lineWidth: 0.5,
               },
               bodyStyles: {
-                fillColor: false as any,
                 textColor: 0,
                 fontSize: 8.5,
-                lineColor: 180,
-                lineWidth: 0.3,
+                cellPadding: 5,
               },
               alternateRowStyles: {
-                fillColor: [240, 240, 240] as any,
-              },
-              styles: {
-                overflow: "linebreak",
-                cellPadding: 5,
+                fillColor: [245, 247, 250] as any,
               },
               columnStyles: {
                 0: { cellWidth: 22, halign: "center" },
@@ -494,6 +601,7 @@ export default function AdminPortalPage() {
         });
       }
 
+      // Page footer pass
       const totalPages = doc.getNumberOfPages();
       for (let pg = 1; pg <= totalPages; pg++) {
         doc.setPage(pg);
@@ -505,9 +613,8 @@ export default function AdminPortalPage() {
         doc.setFont("helvetica", "normal");
         doc.setTextColor(80);
 
-        doc.text("Student Supervision Application — Admin Master Report", marginL, pageH - 24);
+        doc.text("Student Supervision Application — Master Report", marginL, pageH - 24);
         doc.text(`Page ${pg} of ${totalPages}`, pageW / 2, pageH - 24, { align: "center" });
-        doc.text("Confidential", marginR, pageH - 24, { align: "right" });
 
         doc.setTextColor(0);
       }
@@ -779,28 +886,34 @@ export default function AdminPortalPage() {
                       const sortedReport = [...supervisorReport].sort((a, b) => b.studentCount - a.studentCount);
                       return (
                         <>
-                          {/* Shadcn UI Bar Chart */}
-                          <ChartContainer config={supervisorChartConfig} className="aspect-auto h-[160px] w-full">
+                          {/* Shadcn UI Horizontal Row Bar Chart */}
+                          <ChartContainer config={supervisorChartConfig} style={{ height: Math.max(sortedReport.length * 38, 160) }} className="w-full">
                             <BarChart
                               accessibilityLayer
                               data={sortedReport.map((s) => ({ name: s.name, students: s.studentCount }))}
+                              layout="vertical"
                               margin={{
-                                top: 20,
+                                left: 10,
+                                right: 35,
+                                top: 5,
+                                bottom: 5,
                               }}
                             >
-                              <CartesianGrid vertical={false} />
-                              <XAxis
+                              <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+                              <YAxis
                                 dataKey="name"
+                                type="category"
                                 tickLine={false}
-                                tickMargin={10}
                                 axisLine={false}
-                                tickFormatter={(val) => (val.length > 14 ? `${val.slice(0, 12)}…` : val)}
+                                width={120}
+                                tickFormatter={(val) => (val.length > 16 ? `${val.slice(0, 14)}…` : val)}
                               />
+                              <XAxis type="number" hide />
                               <ChartTooltip
                                 cursor={false}
                                 content={<ChartTooltipContent hideLabel />}
                               />
-                              <Bar dataKey="students" radius={[8, 8, 0, 0]}>
+                              <Bar dataKey="students" radius={[0, 6, 6, 0]} barSize={18}>
                                 {sortedReport.map((sup, index) => {
                                   const barColor =
                                     sup.studentCount >= 5
@@ -812,9 +925,9 @@ export default function AdminPortalPage() {
                                   return <Cell key={`cell-${index}`} fill={barColor} />;
                                 })}
                                 <LabelList
-                                  position="top"
-                                  offset={12}
-                                  className="fill-foreground font-semibold"
+                                  position="right"
+                                  offset={8}
+                                  className="fill-foreground font-bold"
                                   fontSize={12}
                                 />
                               </Bar>
