@@ -79,7 +79,7 @@ export default function AdminPortalPage() {
 
   const [allowedDomains, setAllowedDomains] = useState("");
   const [smtpHost, setSmtpHost] = useState("");
-  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpPort, setSmtpPort] = useState("");
   const [smtpSecure, setSmtpSecure] = useState(false);
   const [smtpUser, setSmtpUser] = useState("");
   const [smtpPass, setSmtpPass] = useState("");
@@ -130,7 +130,7 @@ export default function AdminPortalPage() {
       if (data.success) {
         setAllowedDomains(data.settings.ALLOWED_REGISTRATION_DOMAINS || "");
         setSmtpHost(data.settings.SMTP_HOST || "");
-        setSmtpPort(data.settings.SMTP_PORT || "587");
+        setSmtpPort(data.settings.SMTP_PORT || "");
         setSmtpSecure(data.settings.SMTP_SECURE === "true");
         setSmtpUser(data.settings.SMTP_USER || "");
         setSmtpPass(data.settings.SMTP_PASS || "");
@@ -714,7 +714,7 @@ export default function AdminPortalPage() {
                         </div>
                         <div className="space-y-1.5">
                           <Label htmlFor="smtpPort" className="text-xs font-semibold uppercase tracking-wide">SMTP Port</Label>
-                          <Input id="smtpPort" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="2525" />
+                          <Input id="smtpPort" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="e.g. 587 or 2525" />
                         </div>
                       </div>
 

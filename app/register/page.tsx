@@ -72,7 +72,7 @@ export default function RegisterPage() {
       const data = await res.json();
 
       if (data.success) {
-        router.push("/login?registered=true");
+        router.push("/supervisee");
       } else {
         setError(data.error || "Failed to complete registration.");
       }

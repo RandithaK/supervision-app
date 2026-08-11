@@ -60,13 +60,18 @@ export async function POST(request: Request) {
 
       let setting = await settingRepo.findOneBy({ key });
 
-      if (setting) {
-        setting.value = value;
+      if (value === "" || value === null || value === undefined) {
+        if (setting) {
+          await settingRepo.remove(setting);
+        }
       } else {
-        setting = settingRepo.create({ key, value });
+        if (setting) {
+          setting.value = value;
+        } else {
+          setting = settingRepo.create({ key, value });
+        }
+        await settingRepo.save(setting);
       }
-
-      await settingRepo.save(setting);
     }
 
     // Force SMTP module to reconnect on next dispatch if SMTP settings were updated

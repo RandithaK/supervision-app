@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getUserRepository, getOtpRepository } from "@/lib/db/data-source";
 import { UserRole } from "@/lib/db/entities/User";
+import { signToken, AUTH_COOKIE_NAME } from "@/lib/auth";
 import { EmailService } from "@/lib/email";
 
 export async function POST(request: Request) {
@@ -80,19 +81,36 @@ export async function POST(request: Request) {
       }
     }).catch(err => console.error("Failed to send welcome email:", err));
 
-    return NextResponse.json(
+    // 6. Automatically log the user in
+    const tokenPayload = {
+      id: newUser.id,
+      email: newUser.email,
+      name: newUser.name,
+      role: newUser.role,
+    };
+    const token = await signToken(tokenPayload);
+
+    const response = NextResponse.json(
       {
         success: true,
         message: "Registration successful",
-        user: {
-          id: newUser.id,
-          name: newUser.name,
-          email: newUser.email,
-          role: newUser.role,
-        },
+        user: tokenPayload,
       },
       { status: 201 }
     );
+
+    // Set HTTP-Only Cookie
+    response.cookies.set({
+      name: AUTH_COOKIE_NAME,
+      value: token,
+      httpOnly: true,
+      path: "/",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      sameSite: "lax",
+    });
+
+    return response;
   } catch (error: any) {
     console.error("Self registration error:", error);
     return NextResponse.json(
