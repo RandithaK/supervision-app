@@ -1,13 +1,13 @@
 import "reflect-metadata";
 import { NextResponse } from "next/server";
 import { getSettingRepository } from "@/lib/db/data-source";
-import { getSession } from "@/lib/api-auth";
+import { getAuthUser } from "@/lib/api-auth";
 import { UserRole } from "@/lib/db/entities/User";
 import { clearTransporterCache } from "@/lib/email/smtp-sender";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const session = await getSession();
+    const session = await getAuthUser(request);
     if (!session || session.role !== UserRole.SUPERADMIN) {
       return NextResponse.json({ success: false, error: "Unauthorized. SuperAdmin only." }, { status: 403 });
     }
@@ -35,7 +35,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const session = await getSession();
+    const session = await getAuthUser(request);
     if (!session || session.role !== UserRole.SUPERADMIN) {
       return NextResponse.json({ success: false, error: "Unauthorized. SuperAdmin only." }, { status: 403 });
     }
