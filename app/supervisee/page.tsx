@@ -108,24 +108,22 @@ export default function SuperviseePortalPage() {
   const fetchPortalData = useCallback(async () => {
     setLoadingData(true);
     try {
-      const [superRes, appRes, assignRes, settingsRes, groupRes] = await Promise.all([
+      const [superRes, appRes, assignRes, groupRes] = await Promise.all([
         fetch("/api/supervisors"),
         fetch("/api/applications"),
         fetch("/api/assignments"),
-        fetch("/api/settings/public"),
         fetch("/api/groups"),
       ]);
       const superData = await superRes.json();
       const appData = await appRes.json();
       const assignData = await assignRes.json();
-      const settingsData = await settingsRes.json();
       const groupData = await groupRes.json();
       
       if (superData.success) setSupervisors(superData.supervisors);
       if (appData.success) setApplications(appData.applications);
       if (assignData.success) setAssignments(assignData.assignments);
-      if (settingsData.success) setGroupEnabled(settingsData.enabled);
       if (groupData.success) {
+        setGroupEnabled(!!groupData.enabled);
         setCurrentGroup(groupData.group);
         setInvitations(groupData.invitations || []);
       }

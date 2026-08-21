@@ -12,6 +12,10 @@ export async function GET(request: Request) {
 
     const groupMemberRepo = await getGroupMemberRepository();
     const groupRepo = await getGroupRepository();
+    const settingRepo = await getSettingRepository();
+
+    const groupSetting = await settingRepo.findOneBy({ key: "ENABLE_GROUP_SUPERVISION" });
+    const isEnabled = groupSetting?.value === "true";
 
     if (authUser.role === UserRole.SUPERVISEE) {
       const allMemberships = await groupMemberRepo.find({
@@ -51,13 +55,14 @@ export async function GET(request: Request) {
       
       return NextResponse.json({
         success: true,
+        enabled: isEnabled,
         group: currentGroup,
         invitations
       });
     } else if (authUser.role === UserRole.ADMIN || authUser.role === UserRole.SUPERADMIN) {
       // Admin sees all groups
       const groups = await groupRepo.find({ relations: { createdBy: true } });
-      return NextResponse.json({ success: true, groups });
+      return NextResponse.json({ success: true, enabled: isEnabled, groups });
     }
     
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 403 });
