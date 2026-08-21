@@ -10,37 +10,18 @@ import { Label } from "@/components/ui/label";
 import { generateSupervisorPDFReport } from "@/lib/pdf/supervisor-pdf-report";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  areasOfInterest?: string[] | null;
-}
-
-interface Application {
-  id: string;
-  message?: string;
-  status: string;
-  createdAt: string;
-  supervisee: { id: string; name: string; email: string } | null;
-  group?: {
-    id: string;
-    name: string;
-    createdBy: { name: string } | null;
-    members: { user: { name: string; email: string } }[];
-  } | null;
-}
-
-interface Assignment {
-  id: string;
-  supervisee: { id: string; name: string; email: string } | null;
-  createdAt: string;
-}
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast-notification";
+import type {
+  User,
+  ProgramInfo,
+  ApplicationItem as Application,
+  AssignmentItem as Assignment,
+} from "@/types/portal";
 
 export default function SupervisorPortalPage() {
   const router = useRouter();
+  const { addToast } = useToast();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -49,10 +30,29 @@ export default function SupervisorPortalPage() {
   const [updatingProfile, setUpdatingProfile] = useState(false);
   const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  const [programs, setPrograms] = useState<ProgramInfo[]>([]);
+  const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
+
   const [applications, setApplications] = useState<Application[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Confirmation Modal
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: "danger" | "warning" | "default";
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    description: "",
+    onConfirm: () => {},
+  });
 
   const fetchSession = useCallback(async () => {
     try {
@@ -75,10 +75,33 @@ export default function SupervisorPortalPage() {
     }
   }, [router]);
 
+  const fetchPrograms = useCallback(async () => {
+    try {
+      const res = await fetch("/api/programs");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.programs)) {
+        setPrograms(data.programs);
+        setSelectedProgramId((prev) => {
+          if (prev && data.programs.some((p: ProgramInfo) => p.id === prev)) {
+            return prev;
+          }
+          const joined = data.programs.find((p: ProgramInfo) => p.userMembership);
+          return joined?.id || data.programs[0]?.id || null;
+        });
+      }
+    } catch (err) {
+      console.error("Failed to fetch programs:", err);
+    }
+  }, []);
+
   const fetchPortalData = useCallback(async () => {
     setLoadingData(true);
     try {
-      const [appRes, assignRes] = await Promise.all([fetch("/api/applications"), fetch("/api/assignments")]);
+      const params = selectedProgramId ? `?programId=${selectedProgramId}` : "";
+      const [appRes, assignRes] = await Promise.all([
+        fetch(`/api/applications${params}`),
+        fetch(`/api/assignments${params}`),
+      ]);
       const appData = await appRes.json();
       const assignData = await assignRes.json();
       if (appData.success) setApplications(appData.applications);
@@ -88,10 +111,11 @@ export default function SupervisorPortalPage() {
     } finally {
       setLoadingData(false);
     }
-  }, []);
+  }, [selectedProgramId]);
 
   useEffect(() => { fetchSession(); }, [fetchSession]);
-  useEffect(() => { if (currentUser) fetchPortalData(); }, [currentUser, fetchPortalData]);
+  useEffect(() => { if (currentUser) fetchPrograms(); }, [currentUser, fetchPrograms]);
+  useEffect(() => { if (currentUser && selectedProgramId) fetchPortalData(); }, [currentUser, selectedProgramId, fetchPortalData]);
 
   // Save a specific tag list to the API immediately
   const saveTagsToAPI = async (tags: string[]) => {
@@ -107,9 +131,15 @@ export default function SupervisorPortalPage() {
       setProfileMsg(data.success
         ? { ok: true, text: "Saved." }
         : { ok: false, text: data.error ?? "Failed to save." });
-      if (data.success) setTimeout(() => setProfileMsg(null), 2000);
+      if (data.success) {
+        setTimeout(() => setProfileMsg(null), 2000);
+        addToast("success", "Areas of interest updated.");
+      } else {
+        addToast("error", data.error || "Failed to update profile.");
+      }
     } catch (err: any) {
       setProfileMsg({ ok: false, text: err.message });
+      addToast("error", err.message || "Failed to save.");
     } finally {
       setUpdatingProfile(false);
     }
@@ -141,31 +171,93 @@ export default function SupervisorPortalPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setActionMessage({
-          ok: true,
-          text: status === "ACCEPTED"
-            ? "Application accepted — supervisee assigned. Other pending applications withdrawn."
-            : "Application rejected.",
-        });
+        const msg = status === "ACCEPTED"
+          ? "Application accepted — supervisee assigned. Other pending applications withdrawn."
+          : "Application rejected.";
+        setActionMessage({ ok: true, text: msg });
+        addToast(status === "ACCEPTED" ? "success" : "info", msg);
         fetchPortalData();
       } else {
         setActionMessage({ ok: false, text: data.error ?? "Action failed." });
+        addToast("error", data.error || "Action failed.");
       }
     } catch (err: any) {
       setActionMessage({ ok: false, text: err.message });
+      addToast("error", err.message || "Network error.");
     }
+  };
+
+  const handleJoinProgram = async (programId: string) => {
+    try {
+      const res = await fetch(`/api/programs/${programId}/supervisors`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setSelectedProgramId(programId);
+        await fetchPrograms();
+        addToast("success", "Successfully joined program as supervisor.");
+      } else {
+        addToast("error", data.error || "Failed to join program.");
+      }
+    } catch (err: any) {
+      addToast("error", err.message || "Network error while joining program.");
+    }
+  };
+
+  const handleToggleProgramStatus = async (programId: string, newStatus: "ACTIVE" | "DISABLED") => {
+    try {
+      const res = await fetch(`/api/programs/${programId}/supervisors`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchPrograms();
+        addToast("info", `Program status toggled to ${newStatus}.`);
+      } else {
+        addToast("error", data.error || "Failed to update status.");
+      }
+    } catch (err: any) {
+      addToast("error", err.message || "Network error.");
+    }
+  };
+
+  const handleLeaveProgram = (programId: string) => {
+    const prog = programs.find((p) => p.id === programId);
+    setConfirmDialog({
+      isOpen: true,
+      title: "Leave Program?",
+      description: `Leave "${prog?.name || "this program"}"? You can rejoin later if needed (as long as you have no active assignments).`,
+      confirmText: "Leave Program",
+      variant: "warning",
+      onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+        try {
+          const res = await fetch(`/api/programs/${programId}/supervisors`, { method: "DELETE" });
+          const data = await res.json();
+          if (data.success) {
+            await fetchPrograms();
+            if (selectedProgramId === programId) setSelectedProgramId(null);
+            addToast("info", "You left the program.");
+          } else {
+            addToast("error", data.error || "Failed to leave program.");
+          }
+        } catch (err: any) {
+          addToast("error", err.message || "Network error while leaving program.");
+        }
+      },
+    });
   };
 
   // ── Export helpers ──────────────────────────────────────────────────────────
 
-  /** Build enriched row data by joining assignments + accepted applications */
   const buildExportRows = () => {
     return assignments.map((a) => {
       const accepted = acceptedApps.find((app) => app.supervisee?.id === a.supervisee?.id);
       return {
         name:       a.supervisee?.name   ?? "—",
         email:      a.supervisee?.email  ?? "—",
-        assigned:   new Date(a.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+        assigned:   a.createdAt ? new Date(a.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—",
         statement:  accepted?.message   ?? "(no statement provided)",
       };
     });
@@ -209,6 +301,10 @@ export default function SupervisorPortalPage() {
   const acceptedApps = applications.filter((a) => a.status === "ACCEPTED");
   const rejectedApps = applications.filter((a) => a.status === "REJECTED");
 
+  const selectedProgram = programs.find((p) => p.id === selectedProgramId);
+  const joinedPrograms = programs.filter((p) => p.userMembership);
+  const availablePrograms = programs.filter((p) => !p.userMembership && p.status !== "ARCHIVED");
+
   if (loading || !currentUser) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -242,46 +338,148 @@ export default function SupervisorPortalPage() {
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight">Supervisor Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Set your areas of interest, review incoming applications, and manage assigned students.
+            Manage your programs, review applications, and track assigned students.
           </p>
         </div>
 
         <Separator />
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="shadow-sm border-l-4 border-l-amber-300 dark:border-l-amber-600 bg-amber-50/50 dark:bg-amber-900/10">
-            <CardHeader className="p-4 pb-2">
-              <CardDescription className="text-xs font-semibold uppercase text-amber-700 dark:text-amber-400">Pending Requests</CardDescription>
-              <CardTitle className="text-3xl font-extrabold text-amber-700 dark:text-amber-300">{pendingApps.length}</CardTitle>
-              <p className="text-[11px] text-muted-foreground">Awaiting your decision</p>
-            </CardHeader>
-          </Card>
+        {/* My Programs Section */}
+        <Card className="shadow-sm">
+          <CardHeader className="pb-4">
+            <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono text-blue-600 border-blue-500/30 bg-blue-500/10 mb-1">
+              Programs
+            </Badge>
+            <CardTitle className="text-base font-bold">My Programs</CardTitle>
+            <CardDescription className="text-xs">Join programs to receive supervision requests. Toggle your availability per program.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Joined Programs */}
+            {joinedPrograms.length > 0 && (
+              <div className="space-y-2">
+                {joinedPrograms.map((prog) => {
+                  const isActive = prog.userMembership?.status === "ACTIVE";
+                  const isSelected = selectedProgramId === prog.id;
+                  return (
+                    <div
+                      key={prog.id}
+                      className={`p-3 rounded-lg border flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                        isSelected ? "border-primary bg-primary/5" : "border-border hover:bg-muted/30"
+                      }`}
+                      onClick={() => setSelectedProgramId(prog.id)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-sm truncate">{prog.name}</p>
+                          <Badge variant="outline" className={`text-[10px] uppercase font-mono ${
+                            isActive
+                              ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                              : "bg-red-100 text-red-700 border-red-200"
+                          }`}>
+                            {isActive ? "Active" : "Disabled"}
+                          </Badge>
+                          {prog.status === "DRAFT" && (
+                            <Badge variant="outline" className="text-[10px] uppercase font-mono bg-amber-100 text-amber-700 border-amber-200">
+                              Draft
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {prog.supervisorCount} supervisors · {prog.superviseeCount} supervisees
+                        </p>
+                      </div>
+                      <div className="flex gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          size="sm"
+                          variant={isActive ? "destructive" : "default"}
+                          onClick={() => handleToggleProgramStatus(prog.id, isActive ? "DISABLED" : "ACTIVE")}
+                          className="text-[10px] h-7 px-2"
+                        >
+                          {isActive ? "Disable" : "Enable"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleLeaveProgram(prog.id)}
+                          className="text-[10px] h-7 px-2"
+                        >
+                          Leave
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
-          <Card className="shadow-sm border-l-4 border-l-emerald-300 dark:border-l-emerald-600 bg-emerald-50/50 dark:bg-emerald-900/10">
-            <CardHeader className="p-4 pb-2">
-              <CardDescription className="text-xs font-semibold uppercase text-emerald-700 dark:text-emerald-400">Accepted</CardDescription>
-              <CardTitle className="text-3xl font-extrabold text-emerald-700 dark:text-emerald-300">{acceptedApps.length}</CardTitle>
-              <p className="text-[11px] text-muted-foreground">{assignments.length} student{assignments.length !== 1 ? "s" : ""} assigned</p>
-            </CardHeader>
-          </Card>
+            {/* Available Programs */}
+            {availablePrograms.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-muted-foreground uppercase font-semibold tracking-wide pt-2">Available Programs</p>
+                {availablePrograms.map((prog) => (
+                  <div key={prog.id} className="p-3 rounded-lg border border-dashed border-border flex items-center justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{prog.name}</p>
+                      {prog.description && <p className="text-[11px] text-muted-foreground truncate">{prog.description}</p>}
+                    </div>
+                    <Button size="sm" onClick={() => handleJoinProgram(prog.id)} className="text-xs h-7 font-semibold shrink-0">
+                      Join →
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
 
-          <Card className="shadow-sm border-l-4 border-l-red-300 dark:border-l-red-600 bg-red-50/50 dark:bg-red-900/10">
-            <CardHeader className="p-4 pb-2">
-              <CardDescription className="text-xs font-semibold uppercase text-red-700 dark:text-red-400">Rejected</CardDescription>
-              <CardTitle className="text-3xl font-extrabold text-red-700 dark:text-red-300">{rejectedApps.length}</CardTitle>
-              <p className="text-[11px] text-muted-foreground">Applications declined</p>
-            </CardHeader>
-          </Card>
+            {joinedPrograms.length === 0 && availablePrograms.length === 0 && (
+              <p className="text-xs text-muted-foreground py-6 text-center border border-dashed rounded-lg">
+                No programs available. Ask an admin to create one.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
-          <Card className="shadow-sm border-l-4 border-l-primary/40">
-            <CardHeader className="p-4 pb-2">
-              <CardDescription className="text-xs font-semibold uppercase">Areas of Interest</CardDescription>
-              <CardTitle className="text-3xl font-extrabold">{interestTags.length}</CardTitle>
-              <p className="text-[11px] text-muted-foreground">Topic{interestTags.length !== 1 ? "s" : ""} listed</p>
-            </CardHeader>
-          </Card>
-        </div>
+        {/* Stats (scoped to selected program) */}
+        {selectedProgram && (
+          <>
+            <div className="text-xs text-muted-foreground">
+              Showing data for: <span className="font-semibold text-foreground">{selectedProgram.name}</span>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="shadow-sm border-l-4 border-l-amber-300 dark:border-l-amber-600 bg-amber-50/50 dark:bg-amber-900/10">
+                <CardHeader className="p-4 pb-2">
+                  <CardDescription className="text-xs font-semibold uppercase text-amber-700 dark:text-amber-400">Pending Requests</CardDescription>
+                  <CardTitle className="text-3xl font-extrabold text-amber-700 dark:text-amber-300">{pendingApps.length}</CardTitle>
+                  <p className="text-[11px] text-muted-foreground">Awaiting your decision</p>
+                </CardHeader>
+              </Card>
+
+              <Card className="shadow-sm border-l-4 border-l-emerald-300 dark:border-l-emerald-600 bg-emerald-50/50 dark:bg-emerald-900/10">
+                <CardHeader className="p-4 pb-2">
+                  <CardDescription className="text-xs font-semibold uppercase text-emerald-700 dark:text-emerald-400">Accepted</CardDescription>
+                  <CardTitle className="text-3xl font-extrabold text-emerald-700 dark:text-emerald-300">{acceptedApps.length}</CardTitle>
+                  <p className="text-[11px] text-muted-foreground">{assignments.length} student{assignments.length !== 1 ? "s" : ""} assigned</p>
+                </CardHeader>
+              </Card>
+
+              <Card className="shadow-sm border-l-4 border-l-red-300 dark:border-l-red-600 bg-red-50/50 dark:bg-red-900/10">
+                <CardHeader className="p-4 pb-2">
+                  <CardDescription className="text-xs font-semibold uppercase text-red-700 dark:text-red-400">Rejected</CardDescription>
+                  <CardTitle className="text-3xl font-extrabold text-red-700 dark:text-red-300">{rejectedApps.length}</CardTitle>
+                  <p className="text-[11px] text-muted-foreground">Applications declined</p>
+                </CardHeader>
+              </Card>
+
+              <Card className="shadow-sm border-l-4 border-l-primary/40">
+                <CardHeader className="p-4 pb-2">
+                  <CardDescription className="text-xs font-semibold uppercase">Areas of Interest</CardDescription>
+                  <CardTitle className="text-3xl font-extrabold">{interestTags.length}</CardTitle>
+                  <p className="text-[11px] text-muted-foreground">Topic{interestTags.length !== 1 ? "s" : ""} listed</p>
+                </CardHeader>
+              </Card>
+            </div>
+          </>
+        )}
 
         {/* Areas of Interest */}
         <Card className="shadow-sm">
@@ -316,7 +514,6 @@ export default function SupervisorPortalPage() {
                 </div>
               )}
 
-              {/* Inline save status */}
               {profileMsg && (
                 <p className={`text-[11px] font-medium ${
                   profileMsg.ok ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"
@@ -353,190 +550,203 @@ export default function SupervisorPortalPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {selectedProgram && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-          {/* Pending applications queue */}
-          <Card className="shadow-sm">
-            <CardHeader className="pb-4 flex flex-row items-center justify-between">
-              <div>
-                <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700/40 mb-1">
-                  Incoming
-                </Badge>
-                <CardTitle className="text-base font-bold">Pending Requests</CardTitle>
-                <CardDescription className="text-xs">Applications awaiting your accept / reject decision.</CardDescription>
-              </div>
-              <Button variant="ghost" size="sm" onClick={fetchPortalData} className="text-xs shrink-0">
-                Refresh
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {loadingData ? (
-                <p className="text-xs text-muted-foreground py-8 text-center">Loading…</p>
-              ) : pendingApps.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-8 text-center border border-dashed rounded-lg">
-                  No pending requests. All caught up! 🎉
-                </p>
-              ) : (
-                <div className="rounded-lg border border-amber-200 dark:border-amber-700/40 overflow-hidden divide-y divide-amber-100 dark:divide-amber-900/30">
-                  {pendingApps.map((app) => (
-                    <div key={app.id} className="p-4 space-y-3 bg-amber-50/50 dark:bg-amber-900/10">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold text-sm">
-                            {app.group ? `${app.group.name} (Group)` : (app.supervisee?.name ?? "Supervisee")}
-                          </p>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {app.group ? (
-                              <span>Applied by {app.group.createdBy?.name || "Leader"}</span>
-                            ) : (
-                              app.supervisee?.email
-                            )}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {app.group && (
-                            <Badge variant="outline" className="text-[10px] uppercase font-mono bg-blue-100 text-blue-700 border-blue-200">
-                              GROUP
-                            </Badge>
-                          )}
-                          <Badge variant="outline" className="text-[10px] uppercase font-mono bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700/40">
-                            Pending
-                          </Badge>
-                        </div>
-                      </div>
-                      {app.group && app.group.members && (
-                        <div className="bg-blue-50/50 p-2 rounded text-xs border border-blue-100">
-                          <p className="font-semibold mb-1 text-blue-800">Group Members ({app.group.members.length}):</p>
-                          <ul className="list-disc list-inside text-blue-700 space-y-0.5">
-                            {app.group.members.map((m, i) => (
-                              <li key={i}>{m.user.name} <span className="text-muted-foreground ml-1 font-mono text-[10px]">{m.user.email}</span></li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {app.message && (
-                        <p className="text-xs text-muted-foreground bg-background p-2.5 rounded border border-border italic">
-                          &ldquo;{app.message}&rdquo;
-                        </p>
-                      )}
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => handleApplicationAction(app.id, "ACCEPTED")}
-                          className="flex-1 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white dark:bg-emerald-700 dark:hover:bg-emerald-600"
-                        >
-                          Accept &amp; Assign
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleApplicationAction(app.id, "REJECTED")}
-                          className="flex-1 text-xs font-semibold"
-                        >
-                          Reject
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+            {/* Pending applications queue */}
+            <Card className="shadow-sm">
+              <CardHeader className="pb-4 flex flex-row items-center justify-between">
+                <div>
+                  <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700/40 mb-1">
+                    Incoming
+                  </Badge>
+                  <CardTitle className="text-base font-bold">Pending Requests</CardTitle>
+                  <CardDescription className="text-xs">Applications awaiting your accept / reject decision.</CardDescription>
                 </div>
-              )}
-
-              {/* History */}
-              {(acceptedApps.length > 0 || rejectedApps.length > 0) && (
-                <div className="space-y-2 pt-1">
-                  <p className="text-[11px] text-muted-foreground uppercase font-semibold tracking-wide">History</p>
-                  <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
-                    {[...acceptedApps, ...rejectedApps].map((app) => (
-                      <div key={app.id} className="px-4 py-2.5 flex items-center justify-between text-xs">
-                        <span className="font-medium">
-                          {app.group ? `${app.group.name} (Group)` : (app.supervisee?.name ?? "Supervisee")}
-                        </span>
-                        <Badge variant="outline" className={`text-[10px] uppercase font-mono ${
-                          app.status === "ACCEPTED"
-                            ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40"
-                            : "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700/40"
-                        }`}>
-                          {app.status}
-                        </Badge>
+                <Button variant="ghost" size="sm" onClick={fetchPortalData} className="text-xs shrink-0">
+                  Refresh
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {loadingData ? (
+                  <p className="text-xs text-muted-foreground py-8 text-center">Loading…</p>
+                ) : pendingApps.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-8 text-center border border-dashed rounded-lg">
+                    No pending requests. All caught up! 🎉
+                  </p>
+                ) : (
+                  <div className="rounded-lg border border-amber-200 dark:border-amber-700/40 overflow-hidden divide-y divide-amber-100 dark:divide-amber-900/30">
+                    {pendingApps.map((app) => (
+                      <div key={app.id} className="p-4 space-y-3 bg-amber-50/50 dark:bg-amber-900/10">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold text-sm">
+                              {app.group ? `${app.group.name} (Group)` : (app.supervisee?.name ?? "Supervisee")}
+                            </p>
+                            <p className="text-xs text-muted-foreground font-mono">
+                              {app.group ? (
+                                <span>Applied by {app.group.createdBy?.name || "Leader"}</span>
+                              ) : (
+                                app.supervisee?.email
+                              )}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {app.group && (
+                              <Badge variant="outline" className="text-[10px] uppercase font-mono bg-blue-100 text-blue-700 border-blue-200">
+                                GROUP
+                              </Badge>
+                            )}
+                            <Badge variant="outline" className="text-[10px] uppercase font-mono bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700/40">
+                              Pending
+                            </Badge>
+                          </div>
+                        </div>
+                        {app.group && app.group.members && (
+                          <div className="bg-blue-50/50 p-2 rounded text-xs border border-blue-100">
+                            <p className="font-semibold mb-1 text-blue-800">Group Members ({app.group.members.length}):</p>
+                            <ul className="list-disc list-inside text-blue-700 space-y-0.5">
+                              {app.group.members.map((m, i) => (
+                                <li key={i}>{m.user.name} <span className="text-muted-foreground ml-1 font-mono text-[10px]">{m.user.email}</span></li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {app.message && (
+                          <p className="text-xs text-muted-foreground bg-background p-2.5 rounded border border-border italic">
+                            &ldquo;{app.message}&rdquo;
+                          </p>
+                        )}
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleApplicationAction(app.id, "ACCEPTED")}
+                            className="flex-1 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white dark:bg-emerald-700 dark:hover:bg-emerald-600"
+                          >
+                            Accept &amp; Assign
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleApplicationAction(app.id, "REJECTED")}
+                            className="flex-1 text-xs font-semibold"
+                          >
+                            Reject
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
 
-          {/* Assigned supervisees */}
-          <Card className="shadow-sm">
-            <CardHeader className="pb-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div>
-                  <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40 mb-1">
-                    Active Students
-                  </Badge>
-                  <CardTitle className="text-base font-bold">Assigned Supervisees</CardTitle>
-                  <CardDescription className="text-xs">Supervisees currently assigned to you.</CardDescription>
-                </div>
-                {assignments.length > 0 && (
-                  <div className="flex gap-2 shrink-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleExportCSV}
-                      className="text-xs font-semibold"
-                    >
-                      ↓ CSV
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleExportPDF}
-                      className="text-xs font-semibold"
-                    >
-                      ↓ PDF
-                    </Button>
+                {/* History */}
+                {(acceptedApps.length > 0 || rejectedApps.length > 0) && (
+                  <div className="space-y-2 pt-1">
+                    <p className="text-[11px] text-muted-foreground uppercase font-semibold tracking-wide">History</p>
+                    <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
+                      {[...acceptedApps, ...rejectedApps].map((app) => (
+                        <div key={app.id} className="px-4 py-2.5 flex items-center justify-between text-xs">
+                          <span className="font-medium">
+                            {app.group ? `${app.group.name} (Group)` : (app.supervisee?.name ?? "Supervisee")}
+                          </span>
+                          <Badge variant="outline" className={`text-[10px] uppercase font-mono ${
+                            app.status === "ACCEPTED"
+                              ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40"
+                              : "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700/40"
+                          }`}>
+                            {app.status}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {assignments.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-8 text-center border border-dashed rounded-lg">
-                  No supervisees assigned yet. Accept an application to assign a student.
-                </p>
-              ) : (
-                <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
-                  {assignments.map((a) => {
-                    const accepted = acceptedApps.find((app) => app.supervisee?.id === a.supervisee?.id);
-                    return (
-                      <div key={a.id} className="px-4 py-3 flex items-center justify-between border-l-4 border-l-emerald-300 dark:border-l-emerald-600">
-                        <div className="space-y-0.5">
-                          <p className="font-semibold text-sm">{a.supervisee?.name ?? "Supervisee"}</p>
-                          <p className="text-xs text-muted-foreground font-mono">{a.supervisee?.email}</p>
-                          {accepted?.message && (
-                            <p className="text-[11px] text-muted-foreground italic truncate max-w-xs">
-                              &ldquo;{accepted.message}&rdquo;
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-end gap-1.5 shrink-0">
-                          <Badge variant="outline" className="text-[10px] font-mono bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40">
-                            Assigned
-                          </Badge>
-                          <span className="text-[10px] text-muted-foreground">
-                            {new Date(a.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-        </div>
+            {/* Assigned supervisees */}
+            <Card className="shadow-sm">
+              <CardHeader className="pb-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <Badge variant="outline" className="w-fit text-[10px] uppercase font-mono bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40 mb-1">
+                      Active Students
+                    </Badge>
+                    <CardTitle className="text-base font-bold">Assigned Supervisees</CardTitle>
+                    <CardDescription className="text-xs">Supervisees currently assigned to you in this program.</CardDescription>
+                  </div>
+                  {assignments.length > 0 && (
+                    <div className="flex gap-2 shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleExportCSV}
+                        className="text-xs font-semibold"
+                      >
+                        ↓ CSV
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleExportPDF}
+                        className="text-xs font-semibold"
+                      >
+                        ↓ PDF
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {assignments.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-8 text-center border border-dashed rounded-lg">
+                    No supervisees assigned yet. Accept an application to assign a student.
+                  </p>
+                ) : (
+                  <div className="rounded-lg border border-border overflow-hidden divide-y divide-border">
+                    {assignments.map((a) => {
+                      const accepted = acceptedApps.find((app) => app.supervisee?.id === a.supervisee?.id);
+                      return (
+                        <div key={a.id} className="px-4 py-3 flex items-center justify-between border-l-4 border-l-emerald-300 dark:border-l-emerald-600">
+                          <div className="space-y-0.5">
+                            <p className="font-semibold text-sm">{a.supervisee?.name ?? "Supervisee"}</p>
+                            <p className="text-xs text-muted-foreground font-mono">{a.supervisee?.email}</p>
+                            {accepted?.message && (
+                              <p className="text-[11px] text-muted-foreground italic truncate max-w-xs">
+                                &ldquo;{accepted.message}&rdquo;
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-1.5 shrink-0">
+                            <Badge variant="outline" className="text-[10px] font-mono bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700/40">
+                              Assigned
+                            </Badge>
+                            <span className="text-[10px] text-muted-foreground">
+                              {a.createdAt ? new Date(a.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+          </div>
+        )}
       </main>
+
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmText={confirmDialog.confirmText}
+        cancelText={confirmDialog.cancelText}
+        variant={confirmDialog.variant}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

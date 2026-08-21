@@ -33,6 +33,9 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { useToast } from "@/components/ui/toast-notification";
+import { ProgramsManagementTab } from "@/components/admin/ProgramsManagementTab";
+import type { ProgramInfo, User as UserAccount } from "@/types/portal";
 
 const BAR_COLORS = [
   "#6366f1", // Indigo
@@ -75,17 +78,7 @@ import {
   Users,
 } from "lucide-react";
 
-interface UserAccount {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  createdAt?: string;
-}
-
-
-
-type TabType = "overview" | "breakdown" | "users" | "add-user" | "settings";
+type TabType = "overview" | "breakdown" | "users" | "add-user" | "programs" | "settings";
 
 const supervisorChartConfig = {
   students: {
@@ -166,6 +159,13 @@ export default function AdminPortalPage() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsStatus, setSettingsStatus] = useState<{ success?: boolean; msg?: string } | null>(null);
 
+  // Programs State
+  const [programList, setProgramList] = useState<ProgramInfo[]>([]);
+  const [loadingPrograms, setLoadingPrograms] = useState(false);
+
+  // Toast notifications
+  const { addToast } = useToast();
+
   const fetchSession = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/me");
@@ -232,6 +232,19 @@ export default function AdminPortalPage() {
     }
   }, []);
 
+  const fetchPrograms = useCallback(async () => {
+    setLoadingPrograms(true);
+    try {
+      const res = await fetch("/api/programs");
+      const data = await res.json();
+      if (data.success) setProgramList(data.programs);
+    } catch (err) {
+      console.error("Failed to fetch programs", err);
+    } finally {
+      setLoadingPrograms(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchSession();
   }, [fetchSession]);
@@ -240,11 +253,12 @@ export default function AdminPortalPage() {
     if (currentUser) {
       fetchUsers();
       fetchReport();
+      fetchPrograms();
       if (currentUser.role === "SUPERADMIN") {
         fetchSettings();
       }
     }
-  }, [currentUser, fetchUsers, fetchReport, fetchSettings]);
+  }, [currentUser, fetchUsers, fetchReport, fetchPrograms, fetchSettings]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -279,6 +293,47 @@ export default function AdminPortalPage() {
     }
   };
 
+  const handleCreateProgram = async (data: { name: string; description: string; status: string }): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/programs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const resData = await res.json();
+      if (resData.success) {
+        addToast("success", `Program "${data.name}" created successfully.`);
+        fetchPrograms();
+        return true;
+      } else {
+        addToast("error", resData.error || "Failed to create program.");
+        return false;
+      }
+    } catch (err: any) {
+      addToast("error", err.message || "Request failed.");
+      return false;
+    }
+  };
+
+  const handleUpdateProgramStatus = async (programId: string, newStatus: string) => {
+    try {
+      const res = await fetch(`/api/programs/${programId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchPrograms();
+        addToast("success", `Program status updated to ${newStatus}.`);
+      } else {
+        addToast("error", data.error || "Failed to update program.");
+      }
+    } catch (err: any) {
+      addToast("error", err.message || "Request failed.");
+    }
+  };
+
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingSettings(true);
@@ -304,11 +359,14 @@ export default function AdminPortalPage() {
       const data = await res.json();
       if (data.success) {
         setSettingsStatus({ success: true, msg: "System settings updated successfully." });
+        addToast("success", "System settings updated successfully.");
       } else {
         setSettingsStatus({ success: false, msg: data.error || "Failed to save settings." });
+        addToast("error", data.error || "Failed to save settings.");
       }
     } catch (err: any) {
       setSettingsStatus({ success: false, msg: err.message || "Request failed." });
+      addToast("error", err.message || "Request failed.");
     } finally {
       setSavingSettings(false);
       setTimeout(() => setSettingsStatus(null), 4000);
@@ -374,8 +432,9 @@ export default function AdminPortalPage() {
       a.download = `admin-supervisors-report-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
+      addToast("success", "CSV report exported.");
     } catch (err: any) {
-      alert(err.message || "Failed to export CSV");
+      addToast("error", err.message || "Failed to export CSV");
     } finally {
       setExportingCSV(false);
     }
@@ -388,8 +447,9 @@ export default function AdminPortalPage() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Failed to fetch report data");
       await generateAdminPDFReport(data.report, currentUser?.name ?? "Administrator");
+      addToast("success", "PDF report generated.");
     } catch (err: any) {
-      alert(err.message || "Failed to export PDF");
+      addToast("error", err.message || "Failed to export PDF");
     } finally {
       setExportingPDF(false);
     }
@@ -598,6 +658,18 @@ export default function AdminPortalPage() {
           >
             <UserPlus className="h-4 w-4" />
             Account Provisioning
+          </button>
+
+          <button
+            onClick={() => setActiveTab("programs")}
+            className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "programs"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Globe className="h-4 w-4" />
+            Programs ({programList.length})
           </button>
 
           {currentUser.role === "SUPERADMIN" && (
@@ -1153,6 +1225,16 @@ export default function AdminPortalPage() {
               </CardContent>
             </Card>
           </div>
+        )}
+        {/* TAB 5: PROGRAMS MANAGEMENT */}
+        {activeTab === "programs" && (
+          <ProgramsManagementTab
+            programs={programList}
+            loading={loadingPrograms}
+            onRefresh={fetchPrograms}
+            onCreateProgram={handleCreateProgram}
+            onUpdateStatus={handleUpdateProgramStatus}
+          />
         )}
 
         {/* TAB 4: SYSTEM SETTINGS (SUPERADMIN ONLY) */}

@@ -1,13 +1,15 @@
-subject: "Supervision Assignment: {{supervisorName}} & {{superviseeName}}"
+subject: "Supervision Assignment: {{supervisorName}} & {{superviseeName}} ({{programName}})"
 title: "New Supervision Match Established"
 badge:
   text: "New Assignment"
   color: "accent"
 content: |
   <p>Hello <strong>{{recipientName}}</strong>,</p>
-  <p>A new supervision match has been officially established between <strong>{{supervisorName}}</strong> (Supervisor) and <strong>{{superviseeName}}</strong> (Supervisee).</p>
+  <p>A new supervision match has been officially established for <strong>{{programName}}</strong> between <strong>{{supervisorName}}</strong> (Supervisor) and <strong>{{superviseeName}}</strong> (Supervisee).</p>
   <p>You can now view contact details, schedule sessions, and track progress through your supervision portal.</p>
 details:
+  - label: "Program"
+    value: "{{programName}}"
   - label: "Supervisor"
     value: "{{supervisorName}}"
   - label: "Supervisee"

@@ -1,0 +1,19 @@
+subject: "Welcome to Program: {{programName}}"
+title: "Program Registration Confirmed"
+badge:
+  text: "Enrolled"
+  color: "blue"
+content: |
+  <p>Hello <strong>{{superviseeName}}</strong>,</p>
+  <p>You have joined the supervision program <strong>{{programName}}</strong>.</p>
+  <p>You can now browse active supervisors in this program, filter by areas of interest, and submit your supervision applications.</p>
+details:
+  - label: "Program Name"
+    value: "{{programName}}"
+  - label: "Student Name"
+    value: "{{superviseeName}}"
+  - label: "Registration Date"
+    value: "{{joinedAt}}"
+cta:
+  label: "Browse Supervisors"
+  url: "{{dashboardUrl}}"

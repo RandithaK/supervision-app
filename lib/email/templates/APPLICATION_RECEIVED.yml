@@ -1,12 +1,14 @@
-subject: "New Supervision Application from {{superviseeName}}"
+subject: "New Supervision Application from {{superviseeName}} ({{programName}})"
 title: "New Supervision Application"
 badge:
   text: "Action Required"
   color: "blue"
 content: |
   <p>Hello <strong>{{supervisorName}}</strong>,</p>
-  <p>A student has applied for your supervision. Please review their application and respond at your earliest convenience.</p>
+  <p>A student has applied for your supervision in the program <strong>{{programName}}</strong>. Please review their application and respond at your earliest convenience.</p>
 details:
+  - label: "Program"
+    value: "{{programName}}"
   - label: "Student Name"
     value: "{{superviseeName}}"
   - label: "Student Email"

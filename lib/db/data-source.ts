@@ -7,6 +7,9 @@ import { OtpVerification } from "./entities/OtpVerification";
 import { AppSetting } from "./entities/AppSetting";
 import { SuperviseeGroup } from "./entities/SuperviseeGroup";
 import { SuperviseeGroupMember } from "./entities/SuperviseeGroupMember";
+import { Program } from "./entities/Program";
+import { ProgramSupervisor } from "./entities/ProgramSupervisor";
+import { ProgramSupervisee } from "./entities/ProgramSupervisee";
 import path from "path";
 
 const dbPath = path.resolve(process.cwd(), "sqlite.db");
@@ -25,20 +28,15 @@ export async function getDataSource(): Promise<DataSource> {
     AppSetting,
     SuperviseeGroup,
     SuperviseeGroupMember,
+    Program,
+    ProgramSupervisor,
+    ProgramSupervisee,
   ];
 
   // Self-healing check for stale cached DataSource in dev mode HMR
   if (globalThis.__typeorm_datasource__) {
     const initializedNames = globalThis.__typeorm_datasource__.entityMetadatas.map((m) => m.name);
-    const hasAllEntities = [
-      "User",
-      "SupervisionApplication",
-      "SupervisionAssignment",
-      "OtpVerification",
-      "AppSetting",
-      "SuperviseeGroup",
-      "SuperviseeGroupMember",
-    ].every((name) => initializedNames.includes(name));
+    const hasAllEntities = entities.every((e) => initializedNames.includes(e.name));
 
     if (!hasAllEntities && globalThis.__typeorm_datasource__.isInitialized) {
       await globalThis.__typeorm_datasource__.destroy();
@@ -116,4 +114,28 @@ export async function getGroupMemberRepository(): Promise<Repository<SuperviseeG
     (m) => m.name === "SuperviseeGroupMember" || m.tableName === "supervisee_group_members"
   );
   return dataSource.getRepository<SuperviseeGroupMember>(meta ? meta.target : SuperviseeGroupMember);
+}
+
+export async function getProgramRepository(): Promise<Repository<Program>> {
+  const dataSource = await getDataSource();
+  const meta = dataSource.entityMetadatas.find(
+    (m) => m.name === "Program" || m.tableName === "programs"
+  );
+  return dataSource.getRepository<Program>(meta ? meta.target : Program);
+}
+
+export async function getProgramSupervisorRepository(): Promise<Repository<ProgramSupervisor>> {
+  const dataSource = await getDataSource();
+  const meta = dataSource.entityMetadatas.find(
+    (m) => m.name === "ProgramSupervisor" || m.tableName === "program_supervisors"
+  );
+  return dataSource.getRepository<ProgramSupervisor>(meta ? meta.target : ProgramSupervisor);
+}
+
+export async function getProgramSuperviseeRepository(): Promise<Repository<ProgramSupervisee>> {
+  const dataSource = await getDataSource();
+  const meta = dataSource.entityMetadatas.find(
+    (m) => m.name === "ProgramSupervisee" || m.tableName === "program_supervisees"
+  );
+  return dataSource.getRepository<ProgramSupervisee>(meta ? meta.target : ProgramSupervisee);
 }

@@ -1,0 +1,19 @@
+subject: "Program Update: {{programName}} is now {{newStatus}}"
+title: "Program Status Changed"
+badge:
+  text: "{{newStatus}}"
+  color: "{{badgeColor}}"
+content: |
+  <p>Hello <strong>{{recipientName}}</strong>,</p>
+  <p>The status of supervision program <strong>{{programName}}</strong> has been updated to <strong>{{newStatus}}</strong>.</p>
+  <p>{{statusExplanation}}</p>
+details:
+  - label: "Program"
+    value: "{{programName}}"
+  - label: "New Status"
+    value: "{{newStatus}}"
+  - label: "Updated On"
+    value: "{{updatedAt}}"
+cta:
+  label: "View Program"
+  url: "{{dashboardUrl}}"

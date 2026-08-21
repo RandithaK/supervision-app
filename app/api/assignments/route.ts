@@ -13,22 +13,32 @@ export async function GET(request: Request) {
     }
 
     const assignmentRepo = await getAssignmentRepository();
+    const url = new URL(request.url);
+    const programId = url.searchParams.get("programId");
 
-    let whereCondition = {};
+    let whereCondition: any = {};
     if (authUser.role === UserRole.SUPERVISOR) {
       whereCondition = { supervisorId: authUser.id };
     } else if (authUser.role === UserRole.SUPERVISEE) {
       whereCondition = { superviseeId: authUser.id };
     }
 
+    if (programId) {
+      whereCondition.programId = programId;
+    }
+
     const assignments = await assignmentRepo.find({
       where: whereCondition,
-      relations: { supervisor: true, supervisee: true },
+      relations: { supervisor: true, supervisee: true, program: true },
       order: { createdAt: "DESC" },
     });
 
     const sanitized = assignments.map((a) => ({
       id: a.id,
+      programId: a.programId,
+      program: a.program
+        ? { id: a.program.id, name: a.program.name }
+        : null,
       supervisor: a.supervisor
         ? { id: a.supervisor.id, name: a.supervisor.name, email: a.supervisor.email }
         : null,
@@ -59,11 +69,11 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { supervisorId, superviseeId } = body;
+    const { supervisorId, superviseeId, programId } = body;
 
-    if (!supervisorId || !superviseeId) {
+    if (!supervisorId || !superviseeId || !programId) {
       return NextResponse.json(
-        { success: false, error: "supervisorId and superviseeId are required." },
+        { success: false, error: "supervisorId, superviseeId, and programId are required." },
         { status: 400 }
       );
     }
@@ -86,10 +96,10 @@ export async function POST(request: Request) {
     }
 
     const assignmentRepo = await getAssignmentRepository();
-    let existing = await assignmentRepo.findOneBy({ supervisorId, superviseeId });
+    let existing = await assignmentRepo.findOneBy({ supervisorId, superviseeId, programId });
 
     if (!existing) {
-      existing = assignmentRepo.create({ supervisorId, superviseeId });
+      existing = assignmentRepo.create({ supervisorId, superviseeId, programId });
       await assignmentRepo.save(existing);
     }
 

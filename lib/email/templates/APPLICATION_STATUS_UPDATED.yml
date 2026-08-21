@@ -1,13 +1,15 @@
-subject: "Application Status Update: {{status}}"
+subject: "Application Status Update: {{status}} ({{programName}})"
 title: "Application Status Updated: {{status}}"
 badge:
   text: "{{status}}"
-  color: "{{badgeColor}}" # We will pass badgeColor from the engine or payload, or handle it dynamically
+  color: "{{badgeColor}}"
 content: |
   <p>Hello <strong>{{userName}}</strong>,</p>
-  <p>Your supervision application status has been updated to <strong>{{status}}</strong>.</p>
+  <p>Your supervision application for <strong>{{programName}}</strong> has been updated to <strong>{{status}}</strong>.</p>
   <p><strong>Reviewer Comments:</strong> {{reviewerNotes}}</p>
 details:
+  - label: "Program"
+    value: "{{programName}}"
   - label: "Updated On"
     value: "{{updatedAt}}"
   - label: "Current Status"

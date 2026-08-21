@@ -9,6 +9,7 @@ import {
 } from "typeorm";
 import type { User } from "./User";
 import type { SuperviseeGroup } from "./SuperviseeGroup";
+import type { Program } from "./Program";
 
 export enum ApplicationStatus {
   PENDING = "PENDING",
@@ -35,6 +36,13 @@ export class SupervisionApplication {
   @ManyToOne("User", { onDelete: "CASCADE" })
   @JoinColumn({ name: "supervisorId" })
   supervisor!: User;
+
+  @Column({ type: "varchar" })
+  programId!: string;
+
+  @ManyToOne("Program", { onDelete: "CASCADE" })
+  @JoinColumn({ name: "programId" })
+  program!: Program;
 
   @Column({ type: "text", nullable: true })
   message?: string | null;

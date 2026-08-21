@@ -1,0 +1,21 @@
+subject: "Joined Program: {{programName}}"
+title: "Supervisor Program Enrollment"
+badge:
+  text: "Enrolled"
+  color: "green"
+content: |
+  <p>Hello <strong>{{supervisorName}}</strong>,</p>
+  <p>You have successfully joined the program <strong>{{programName}}</strong> as an active supervisor.</p>
+  <p>Supervisees participating in this program will now be able to view your profile and submit supervision requests to you.</p>
+details:
+  - label: "Program"
+    value: "{{programName}}"
+  - label: "Supervisor"
+    value: "{{supervisorName}}"
+  - label: "Status in Program"
+    value: "ACTIVE"
+  - label: "Joined Date"
+    value: "{{joinedAt}}"
+cta:
+  label: "Open Supervisor Portal"
+  url: "{{dashboardUrl}}"

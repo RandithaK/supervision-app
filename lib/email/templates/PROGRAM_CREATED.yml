@@ -1,0 +1,22 @@
+subject: "New Supervision Program: {{programName}}"
+title: "New Program Announced"
+badge:
+  text: "New Program"
+  color: "primary"
+content: |
+  <p>Hello <strong>{{recipientName}}</strong>,</p>
+  <p>A new supervision program, <strong>{{programName}}</strong>, has been created by the administration team.</p>
+  <p>{{programDescription}}</p>
+  <p>You can view program details and join through your portal dashboard.</p>
+details:
+  - label: "Program Name"
+    value: "{{programName}}"
+  - label: "Initial Status"
+    value: "{{programStatus}}"
+  - label: "Created By"
+    value: "{{createdByName}}"
+  - label: "Date"
+    value: "{{createdAt}}"
+cta:
+  label: "Explore Program"
+  url: "{{dashboardUrl}}"

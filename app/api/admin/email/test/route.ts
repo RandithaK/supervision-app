@@ -146,8 +146,39 @@ export async function POST(request: Request) {
       GROUP_APPLICATION_ACCEPTED: {
         userName: "Test Leader",
         supervisorName: "Test Supervisor",
+        programName: "Sample CBT Program",
         dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisee`,
-      }
+      },
+      PROGRAM_CREATED: {
+        recipientName: authUser.name || "Supervisor",
+        programName: "CBT Supervision 2026",
+        programDescription: "Supervision program for Cognitive Behavioral Therapy trainees.",
+        programStatus: "ACTIVE",
+        createdByName: "Admin",
+        createdAt: new Date().toLocaleDateString(),
+        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisor`,
+      },
+      PROGRAM_SUPERVISOR_JOINED: {
+        supervisorName: authUser.name || "Dr. Alice Morgan",
+        programName: "CBT Supervision 2026",
+        joinedAt: new Date().toLocaleDateString(),
+        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisor`,
+      },
+      PROGRAM_SUPERVISEE_JOINED: {
+        superviseeName: authUser.name || "Jane Smith",
+        programName: "CBT Supervision 2026",
+        joinedAt: new Date().toLocaleDateString(),
+        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisee`,
+      },
+      PROGRAM_STATUS_CHANGED: {
+        recipientName: authUser.name || "User",
+        programName: "CBT Supervision 2026",
+        newStatus: "ACTIVE",
+        badgeColor: "green",
+        statusExplanation: "The program status has transitioned from DRAFT to ACTIVE.",
+        updatedAt: new Date().toLocaleDateString(),
+        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}`,
+      },
     };
 
     const finalPayload = {
