@@ -179,6 +179,33 @@ export async function POST(request: Request) {
         updatedAt: new Date().toLocaleDateString(),
         dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}`,
       },
+      ASSIGNMENT_REASSIGNED: {
+        recipientName: authUser.name || "User",
+        programName: "CBT Supervision 2026",
+        superviseeName: "Jane Smith",
+        newSupervisorName: "Dr. Jamie Carter",
+        previousSupervisorName: "Dr. Alice Morgan",
+        reassignedDate: new Date().toLocaleDateString(),
+        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}`,
+      },
+      ASSIGNMENT_REVOKED: {
+        recipientName: authUser.name || "User",
+        programName: "CBT Supervision 2026",
+        superviseeName: "Jane Smith",
+        supervisorName: "Dr. Alice Morgan",
+        revokedDate: new Date().toLocaleDateString(),
+        notes: "Supervision match was revoked by an administrator.",
+        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}`,
+      },
+      PROGRAM_SUPERVISOR_STATUS_CHANGED: {
+        supervisorName: authUser.name || "Dr. Alice Morgan",
+        programName: "CBT Supervision 2026",
+        statusText: "Disabled",
+        badgeColor: "yellow",
+        statusExplanation: "You are currently disabled in this program.",
+        updatedAt: new Date().toLocaleDateString(),
+        dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisor`,
+      },
     };
 
     const finalPayload = {

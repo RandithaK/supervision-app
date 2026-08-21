@@ -1,0 +1,23 @@
+subject: "Supervision Reassigned — {{programName}}"
+title: "Supervision Reassignment Notice"
+badge:
+  text: "Reassigned"
+  color: "blue"
+content: |
+  <p>Hello <strong>{{recipientName}}</strong>,</p>
+  <p>The supervision assignment for <strong>{{superviseeName}}</strong> in <strong>{{programName}}</strong> has been updated by the system administrator.</p>
+details:
+  - label: "Program"
+    value: "{{programName}}"
+  - label: "Supervisee"
+    value: "{{superviseeName}}"
+  - label: "New Supervisor"
+    value: "{{newSupervisorName}}"
+  - label: "Previous Supervisor"
+    value: "{{previousSupervisorName}}"
+  - label: "Date Reassigned"
+    value: "{{reassignedDate}}"
+cta:
+  label: "Open Supervision Dashboard"
+  url: "{{dashboardUrl}}"
+footerText: "If you have questions about this reassignment, please contact your program administrator."

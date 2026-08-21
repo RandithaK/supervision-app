@@ -202,6 +202,12 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Forbidden." }, { status: 403 });
     }
 
+    const programRepo = await getProgramRepository();
+    const program = await programRepo.findOneBy({ id: programId });
+    if (!program) {
+      return NextResponse.json({ success: false, error: "Program not found." }, { status: 404 });
+    }
+
     const programSupervisorRepo = await getProgramSupervisorRepository();
     const membership = await programSupervisorRepo.findOneBy({
       programId,
@@ -217,6 +223,29 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
     membership.status = status;
     await programSupervisorRepo.save(membership);
+
+    // Send confirmation email
+    const userRepo = await getUserRepository();
+    const supervisorUser = await userRepo.findOneBy({ id: targetSupervisorId });
+    if (supervisorUser?.email) {
+      const isActive = status === ProgramParticipantStatus.ACTIVE;
+      const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisor`;
+      EmailService.sendEvent({
+        eventType: "PROGRAM_SUPERVISOR_STATUS_CHANGED",
+        to: supervisorUser.email,
+        payload: {
+          supervisorName: supervisorUser.name,
+          programName: program.name,
+          statusText: isActive ? "Active" : "Disabled",
+          badgeColor: isActive ? "green" : "yellow",
+          statusExplanation: isActive
+            ? "You are now active and visible to supervisees in this program."
+            : "You are currently disabled in this program. Supervisees cannot send you new applications, but existing assignments remain active.",
+          updatedAt: new Date().toLocaleDateString(),
+          dashboardUrl,
+        },
+      }).catch((err) => console.error("Failed to send supervisor status change email:", err));
+    }
 
     return NextResponse.json({
       success: true,

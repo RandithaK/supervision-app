@@ -1,0 +1,20 @@
+subject: "Program Participation Status Updated — {{programName}}"
+title: "Supervisor Status Updated"
+badge:
+  text: "{{statusText}}"
+  color: "{{badgeColor}}"
+content: |
+  <p>Hello <strong>{{supervisorName}}</strong>,</p>
+  <p>Your participation preference for <strong>{{programName}}</strong> has been updated to <strong>{{statusText}}</strong>.</p>
+  <p>{{statusExplanation}}</p>
+details:
+  - label: "Program"
+    value: "{{programName}}"
+  - label: "Status"
+    value: "{{statusText}}"
+  - label: "Updated At"
+    value: "{{updatedAt}}"
+cta:
+  label: "Manage Program Preferences"
+  url: "{{dashboardUrl}}"
+footerText: "You can enable or disable yourself for supervision in any program from your dashboard at any time."

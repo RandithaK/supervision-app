@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/chart";
 import { useToast } from "@/components/ui/toast-notification";
 import { ProgramsManagementTab } from "@/components/admin/ProgramsManagementTab";
+import { AssignmentsManagementTab } from "@/components/admin/AssignmentsManagementTab";
 import type { ProgramInfo, User as UserAccount } from "@/types/portal";
 
 const BAR_COLORS = [
@@ -60,6 +61,7 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  GitMerge,
   Globe,
   KeyRound,
   Loader2,
@@ -78,7 +80,7 @@ import {
   Users,
 } from "lucide-react";
 
-type TabType = "overview" | "breakdown" | "users" | "add-user" | "programs" | "settings";
+type TabType = "overview" | "breakdown" | "assignments" | "users" | "add-user" | "programs" | "settings";
 
 const supervisorChartConfig = {
   students: {
@@ -634,6 +636,18 @@ export default function AdminPortalPage() {
           >
             <BookOpen className="h-4 w-4" />
             Supervisor Breakdown ({supervisorReport.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab("assignments")}
+            className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "assignments"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <GitMerge className="h-4 w-4" />
+            Assignments
           </button>
 
           <button
@@ -1234,6 +1248,18 @@ export default function AdminPortalPage() {
             onRefresh={fetchPrograms}
             onCreateProgram={handleCreateProgram}
             onUpdateStatus={handleUpdateProgramStatus}
+          />
+        )}
+
+        {/* TAB: MANUAL ASSIGNMENTS MANAGEMENT */}
+        {activeTab === "assignments" && (
+          <AssignmentsManagementTab
+            programs={programList}
+            users={userList}
+            onRefreshData={() => {
+              fetchReport();
+              fetchPrograms();
+            }}
           />
         )}
 

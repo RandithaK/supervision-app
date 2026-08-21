@@ -1,0 +1,23 @@
+subject: "Supervision Match Revoked — {{programName}}"
+title: "Supervision Match Revoked"
+badge:
+  text: "Revoked"
+  color: "destructive"
+content: |
+  <p>Hello <strong>{{recipientName}}</strong>,</p>
+  <p>The supervision match between <strong>{{superviseeName}}</strong> and <strong>{{supervisorName}}</strong> in <strong>{{programName}}</strong> has been revoked by the system administrator.</p>
+details:
+  - label: "Program"
+    value: "{{programName}}"
+  - label: "Supervisee"
+    value: "{{superviseeName}}"
+  - label: "Supervisor"
+    value: "{{supervisorName}}"
+  - label: "Action Date"
+    value: "{{revokedDate}}"
+  - label: "Notes"
+    value: "{{notes}}"
+cta:
+  label: "View Program Dashboard"
+  url: "{{dashboardUrl}}"
+footerText: "If this change was unexpected, please contact your system administrator."
