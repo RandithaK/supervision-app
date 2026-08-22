@@ -389,6 +389,20 @@ export async function PATCH(request: Request) {
         }
 
         for (const memberId of memberIdsToProcess) {
+          // Ensure supervisee is enrolled in the program
+          if (application.programId) {
+            const existingMembership = await manager.findOne(ProgramSupervisee, {
+              where: { programId: application.programId, superviseeId: memberId },
+            });
+            if (!existingMembership) {
+              const membership = manager.create(ProgramSupervisee, {
+                programId: application.programId,
+                superviseeId: memberId,
+              });
+              await manager.save(ProgramSupervisee, membership);
+            }
+          }
+
           const assignWhere: any = {
             supervisorId: application.supervisorId,
             superviseeId: memberId,
