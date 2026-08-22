@@ -32,14 +32,18 @@ export async function GET(request: Request, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Program not found." }, { status: 404 });
     }
 
-    const programSupervisorRepo = await getProgramSupervisorRepository();
+    const url = new URL(request.url);
+    const statusParam = url.searchParams.get("status");
 
-    // For supervisees, only show ACTIVE supervisors. For admins/supervisors, show all.
+    // For supervisees, strictly show only ACTIVE supervisors. For admins/supervisors, respect query param or show all.
     const whereCondition: any = { programId };
     if (authUser.role === UserRole.SUPERVISEE) {
       whereCondition.status = ProgramParticipantStatus.ACTIVE;
+    } else if (statusParam && Object.values(ProgramParticipantStatus).includes(statusParam as ProgramParticipantStatus)) {
+      whereCondition.status = statusParam as ProgramParticipantStatus;
     }
 
+    const programSupervisorRepo = await getProgramSupervisorRepository();
     const memberships = await programSupervisorRepo.find({
       where: whereCondition,
       relations: { supervisor: true },

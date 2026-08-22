@@ -20,9 +20,12 @@ export async function GET(request: Request) {
 
     if (programId) {
       const programSupervisorRepo = await getProgramSupervisorRepository();
+      const statusParam = url.searchParams.get("status");
       const whereCondition: any = { programId };
       if (authUser.role === UserRole.SUPERVISEE) {
         whereCondition.status = ProgramParticipantStatus.ACTIVE;
+      } else if (statusParam && Object.values(ProgramParticipantStatus).includes(statusParam as ProgramParticipantStatus)) {
+        whereCondition.status = statusParam as ProgramParticipantStatus;
       }
       const memberships = await programSupervisorRepo.find({
         where: whereCondition,
