@@ -163,7 +163,7 @@ export default function SuperviseePortalPage() {
     supervisors.forEach((s) => {
       if (Array.isArray(s.areasOfInterest)) s.areasOfInterest.forEach((t) => set.add(t));
     });
-    return Array.from(set).sort();
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [supervisors]);
 
   const filteredSupervisors = useMemo(() => {
@@ -441,10 +441,18 @@ export default function SuperviseePortalPage() {
                   return (
                     <div
                       key={prog.id}
+                      role="button"
+                      tabIndex={0}
                       className={`p-3 rounded-lg border flex items-center justify-between gap-3 transition-colors cursor-pointer ${
                         isSelected ? "border-primary bg-primary/5" : "border-border hover:bg-muted/30"
                       }`}
                       onClick={() => setSelectedProgramId(prog.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedProgramId(prog.id);
+                        }
+                      }}
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
@@ -457,11 +465,14 @@ export default function SuperviseePortalPage() {
                           {prog.supervisorCount} supervisors · {prog.superviseeCount} supervisees
                         </p>
                       </div>
-                      <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <div className="shrink-0">
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleLeaveProgram(prog.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleLeaveProgram(prog.id);
+                          }}
                           className="text-[10px] h-7 px-2"
                         >
                           Leave
@@ -765,8 +776,16 @@ export default function SuperviseePortalPage() {
                                 s.areasOfInterest.map((tag) => (
                                   <Badge
                                     key={tag}
+                                    role="button"
+                                    tabIndex={0}
                                     variant="outline"
                                     onClick={() => setSelectedTagFilter(tag)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        setSelectedTagFilter(tag);
+                                      }
+                                    }}
                                     className={`text-[11px] cursor-pointer transition-colors ${
                                       selectedTagFilter === tag
                                         ? "bg-primary text-primary-foreground border-primary"
