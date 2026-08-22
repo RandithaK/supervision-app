@@ -19,3 +19,4 @@ details:
 cta:
   label: "Go to Dashboard"
   url: "{{actionUrl}}"
+footerText: "You can view application details or apply to other supervisors in this program directly from your portal."

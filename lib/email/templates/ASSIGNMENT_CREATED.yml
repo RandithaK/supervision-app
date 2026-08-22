@@ -21,3 +21,4 @@ details:
 cta:
   label: "Open Supervision Dashboard"
   url: "{{dashboardUrl}}"
+footerText: "If you have questions about this assignment, please reach out to your program administrator."
