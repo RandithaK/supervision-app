@@ -352,9 +352,12 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const programRepo = await getProgramRepository();
-    const program = await programRepo.findOneBy({ id: application.programId });
-    const programName = program?.name || "Supervision Program";
+    let programName = "Supervision Program";
+    if (application.programId) {
+      const programRepo = await getProgramRepository();
+      const program = await programRepo.findOneBy({ id: application.programId });
+      if (program) programName = program.name;
+    }
 
     const userRepo = await getUserRepository();
     const supervisee = await userRepo.findOneBy({ id: application.superviseeId });
@@ -386,19 +389,23 @@ export async function PATCH(request: Request) {
         }
 
         for (const memberId of memberIdsToProcess) {
+          const assignWhere: any = {
+            supervisorId: application.supervisorId,
+            superviseeId: memberId,
+          };
+          if (application.programId) {
+            assignWhere.programId = application.programId;
+          }
+
           const existingAssign = await manager.findOne(SupervisionAssignment, {
-            where: {
-              supervisorId: application.supervisorId,
-              superviseeId: memberId,
-              programId: application.programId,
-            },
+            where: assignWhere,
           });
 
           if (!existingAssign) {
             const assignment = manager.create(SupervisionAssignment, {
               supervisorId: application.supervisorId,
               superviseeId: memberId,
-              programId: application.programId,
+              programId: application.programId || null,
             });
             await manager.save(SupervisionAssignment, assignment);
           }
@@ -406,12 +413,15 @@ export async function PATCH(request: Request) {
 
         // Auto-withdraw other pending applications in the same program
         if (memberIdsToProcess.length > 0) {
+          const pendingWhere: any = {
+            superviseeId: In(memberIdsToProcess),
+            status: ApplicationStatus.PENDING,
+          };
+          if (application.programId) {
+            pendingWhere.programId = application.programId;
+          }
           const pendingApps = await manager.find(SupervisionApplication, {
-            where: {
-              superviseeId: In(memberIdsToProcess),
-              programId: application.programId,
-              status: ApplicationStatus.PENDING,
-            },
+            where: pendingWhere,
           });
 
           const idsToWithdraw = pendingApps

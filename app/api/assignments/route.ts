@@ -306,19 +306,21 @@ export async function PATCH(request: Request) {
       }
 
       // Ensure new supervisor is enrolled in the program
-      const existingProgSup = await manager.findOne(ProgramSupervisor, {
-        where: { programId: currentAssignment.programId, supervisorId: newSupervisorId },
-      });
-      if (!existingProgSup) {
-        const progSup = manager.create(ProgramSupervisor, {
-          programId: currentAssignment.programId,
-          supervisorId: newSupervisorId,
-          status: ProgramParticipantStatus.ACTIVE,
+      if (currentAssignment.programId) {
+        const existingProgSup = await manager.findOne(ProgramSupervisor, {
+          where: { programId: currentAssignment.programId, supervisorId: newSupervisorId },
         });
-        await manager.save(ProgramSupervisor, progSup);
-      } else if (existingProgSup.status === ProgramParticipantStatus.DISABLED) {
-        existingProgSup.status = ProgramParticipantStatus.ACTIVE;
-        await manager.save(ProgramSupervisor, existingProgSup);
+        if (!existingProgSup) {
+          const progSup = manager.create(ProgramSupervisor, {
+            programId: currentAssignment.programId,
+            supervisorId: newSupervisorId,
+            status: ProgramParticipantStatus.ACTIVE,
+          });
+          await manager.save(ProgramSupervisor, progSup);
+        } else if (existingProgSup.status === ProgramParticipantStatus.DISABLED) {
+          existingProgSup.status = ProgramParticipantStatus.ACTIVE;
+          await manager.save(ProgramSupervisor, existingProgSup);
+        }
       }
 
       currentAssignment.supervisorId = newSupervisorId;

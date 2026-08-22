@@ -37,12 +37,12 @@ export class SupervisionApplication {
   @JoinColumn({ name: "supervisorId" })
   supervisor!: User;
 
-  @Column({ type: "varchar" })
-  programId!: string;
+  @Column({ type: "varchar", nullable: true })
+  programId?: string | null;
 
-  @ManyToOne("Program", { onDelete: "CASCADE" })
+  @ManyToOne("Program", { onDelete: "CASCADE", nullable: true })
   @JoinColumn({ name: "programId" })
-  program!: Program;
+  program?: Program | null;
 
   @Column({ type: "text", nullable: true })
   message?: string | null;

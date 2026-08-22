@@ -31,12 +31,12 @@ export class SupervisionAssignment {
   @JoinColumn({ name: "superviseeId" })
   supervisee!: User;
 
-  @Column({ type: "varchar" })
-  programId!: string;
+  @Column({ type: "varchar", nullable: true })
+  programId?: string | null;
 
-  @ManyToOne("Program", { onDelete: "CASCADE" })
+  @ManyToOne("Program", { onDelete: "CASCADE", nullable: true })
   @JoinColumn({ name: "programId" })
-  program!: Program;
+  program?: Program | null;
 
   @CreateDateColumn()
   createdAt!: Date;
