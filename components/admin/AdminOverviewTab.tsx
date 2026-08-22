@@ -22,13 +22,14 @@ const supervisorChartConfig = {
 } satisfies ChartConfig;
 
 interface BarShapeProps {
-  value?: number;
-  [key: string]: unknown;
+  readonly value?: number;
+  readonly [key: string]: unknown;
 }
 
 function SupervisorBarShape(props: BarShapeProps) {
   const count = props.value ?? 0;
-  const fill = count >= 5 ? "#ef4444" : count >= 3 ? "#f97316" : "#10b981";
+  const highLoad = count >= 5 ? "#ef4444" : "#f97316";
+  const fill = count >= 3 ? highLoad : "#10b981";
   return <Rectangle {...props} fill={fill} />;
 }
 
