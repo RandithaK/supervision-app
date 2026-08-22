@@ -410,11 +410,17 @@ export async function DELETE(request: Request) {
     let assignmentId = url.searchParams.get("assignmentId");
 
     if (!assignmentId) {
-      try {
-        const body = await request.json();
-        assignmentId = body.assignmentId;
-      } catch {
-        // Body may not be provided if query param was intended
+      const contentType = request.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        try {
+          const body = await request.json();
+          assignmentId = body.assignmentId;
+        } catch {
+          return NextResponse.json(
+            { success: false, error: "Invalid JSON body provided." },
+            { status: 400 }
+          );
+        }
       }
     }
 
