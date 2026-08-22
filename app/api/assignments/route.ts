@@ -287,17 +287,31 @@ export async function PATCH(request: Request) {
       );
     }
 
+    if (assignment.supervisorId === newSupervisorId) {
+      return NextResponse.json(
+        { success: false, error: "Supervisee is already assigned to this supervisor in this program." },
+        { status: 400 }
+      );
+    }
+
     const oldSupervisor = assignment.supervisor;
 
     const dataSource = await getDataSource();
     await dataSource.transaction(async (manager) => {
+      const currentAssignment = await manager.findOne(SupervisionAssignment, {
+        where: { id: assignmentId },
+      });
+      if (!currentAssignment) {
+        throw new Error("Assignment not found or was removed.");
+      }
+
       // Ensure new supervisor is enrolled in the program
       const existingProgSup = await manager.findOne(ProgramSupervisor, {
-        where: { programId: assignment.programId, supervisorId: newSupervisorId },
+        where: { programId: currentAssignment.programId, supervisorId: newSupervisorId },
       });
       if (!existingProgSup) {
         const progSup = manager.create(ProgramSupervisor, {
-          programId: assignment.programId,
+          programId: currentAssignment.programId,
           supervisorId: newSupervisorId,
           status: ProgramParticipantStatus.ACTIVE,
         });
@@ -307,8 +321,9 @@ export async function PATCH(request: Request) {
         await manager.save(ProgramSupervisor, existingProgSup);
       }
 
+      currentAssignment.supervisorId = newSupervisorId;
+      await manager.save(SupervisionAssignment, currentAssignment);
       assignment.supervisorId = newSupervisorId;
-      await manager.save(SupervisionAssignment, assignment);
     });
 
     const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}`;
