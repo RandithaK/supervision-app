@@ -25,13 +25,12 @@ export interface EmailSendOptions {
 export interface EmailSendResult {
   success: boolean;
   messageId?: string;
-  previewUrl?: string | false;
-  mode: "smtp" | "ethereal" | "console";
+  mode: "smtp" | "console";
   error?: string;
 }
 
 /**
- * Fetch SMTP Config from Database, falling back to process.env
+ * Fetch SMTP config from the database, falling back to process.env.
  */
 export async function getSmtpConfig(): Promise<SmtpConfig> {
   let dbSettings: Record<string, string | null> = {};
@@ -42,19 +41,16 @@ export async function getSmtpConfig(): Promise<SmtpConfig> {
       acc[s.key] = s.value;
       return acc;
     }, {} as Record<string, string | null>);
-  } catch (e) {
+  } catch {
     console.warn("Could not load DB settings for SMTP config, falling back to env.");
   }
 
   const getVal = (key: string) => dbSettings[key] || process.env[key] || "";
-  
-  const portStr = getVal("SMTP_PORT");
-  const secureStr = getVal("SMTP_SECURE");
 
   return {
     host: getVal("SMTP_HOST"),
-    port: parseInt(portStr || "587", 10),
-    secure: secureStr === "true",
+    port: parseInt(getVal("SMTP_PORT") || "587", 10),
+    secure: getVal("SMTP_SECURE") === "true",
     user: getVal("SMTP_USER"),
     pass: getVal("SMTP_PASS"),
     fromName: getVal("SMTP_FROM_NAME") || "Supervision App",
@@ -73,100 +69,71 @@ export function clearTransporterCache() {
   cachedTransporter = null;
 }
 
-export async function createTransporter(): Promise<{ transporter: Transporter; mode: "smtp" | "ethereal" | "console" }> {
+export async function createTransporter(): Promise<Transporter> {
   const config = await getSmtpConfig();
-
-  // If host and user/port are configured, use standard SMTP transport
-  if (config.host) {
-    const auth = config.user ? { user: config.user, pass: config.pass } : undefined;
-    const transporter = nodemailer.createTransport({
-      host: config.host,
-      port: config.port,
-      secure: config.secure,
-      auth,
-      tls: {
-        rejectUnauthorized: process.env.NODE_ENV === "production",
-      },
-    });
-    return { transporter, mode: "smtp" };
-  }
-
-  // Fallback 1: In development without SMTP credentials, try creating an Ethereal test account
-  if (process.env.NODE_ENV !== "production") {
-    try {
-      const testAccount = await nodemailer.createTestAccount();
-      const transporter = nodemailer.createTransport({
-        host: "smtp.ethereal.email",
-        port: 465,
-        secure: true,
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-      return { transporter, mode: "ethereal" };
-    } catch (err) {
-      console.warn("Failed to create Ethereal test account for dev email, using JSON stream/console fallback:", err);
-    }
-  }
-
-  // Fallback 2: Stream transport (logs to JSON/console safely)
-  const transporter = nodemailer.createTransport({
-    streamTransport: true,
-    newline: "unix",
-    buffer: true,
+  const auth = config.user ? { user: config.user, pass: config.pass } : undefined;
+  return nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth,
+    tls: {
+      rejectUnauthorized: process.env.NODE_ENV === "production",
+    },
   });
-  return { transporter, mode: "console" };
 }
 
-export async function getTransporter(): Promise<{ transporter: Transporter; mode: "smtp" | "ethereal" | "console" }> {
+export async function getTransporter(): Promise<Transporter> {
   if (!cachedTransporter) {
-    const res = await createTransporter();
-    cachedTransporter = res.transporter;
-    return res;
+    cachedTransporter = await createTransporter();
   }
-  const isConfigured = await isSmtpConfigured();
-  const mode = isConfigured ? "smtp" : "console";
-  return { transporter: cachedTransporter, mode };
+  return cachedTransporter;
 }
 
 /**
- * Verify current SMTP connection
+ * Verify the current SMTP connection.
  */
 export async function verifySmtpConnection(): Promise<{ success: boolean; message: string; details?: any }> {
+  const configured = await isSmtpConfigured();
+  if (!configured) {
+    return {
+      success: false,
+      message: "SMTP is not configured. Set SMTP_HOST (and optionally SMTP_PORT, SMTP_USER, SMTP_PASS) via System Settings or environment variables.",
+    };
+  }
   try {
-    const { transporter, mode } = await createTransporter();
-    if (mode === "console") {
-      return {
-        success: true,
-        message: "SMTP is running in Console Fallback mode (No SMTP host defined in environment variables).",
-        details: { mode },
-      };
-    }
-    const verified = await transporter.verify();
+    const transporter = await createTransporter();
+    await transporter.verify();
     return {
       success: true,
-      message: `SMTP Connection successfully verified (${mode.toUpperCase()} mode).`,
-      details: { verified, mode, config: await getSmtpConfig() },
+      message: "SMTP connection verified successfully.",
+      details: { config: await getSmtpConfig() },
     };
   } catch (error: any) {
     return {
       success: false,
-      message: `SMTP Connection failed: ${error.message || "Unknown error"}`,
+      message: `SMTP connection failed: ${error.message || "Unknown error"}`,
       details: { error: error.message },
     };
   }
 }
 
 /**
- * Send an email via the configured SMTP transport
+ * Send an email via the configured SMTP transport.
+ * If SMTP is not configured, logs to console and returns success:false.
  */
 export async function sendMail(options: EmailSendOptions): Promise<EmailSendResult> {
+  const configured = await isSmtpConfigured();
+  if (!configured) {
+    console.warn(`[EMAIL SKIPPED] SMTP not configured. To: ${options.to} | Subject: ${options.subject}`);
+    return { success: false, mode: "console", error: "SMTP not configured" };
+  }
+
   const config = await getSmtpConfig();
   const from = `"${config.fromName}" <${config.fromEmail}>`;
 
   try {
-    const { transporter, mode } = await getTransporter();
+    const transporter = await getTransporter();
 
     const mailOptions: SendMailOptions = {
       from,
@@ -180,30 +147,11 @@ export async function sendMail(options: EmailSendOptions): Promise<EmailSendResu
     };
 
     const info = await transporter.sendMail(mailOptions);
-    let previewUrl: string | false = false;
+    console.log(`[EMAIL SENT] ID: ${info.messageId} → ${options.to}`);
 
-    if (mode === "ethereal") {
-      previewUrl = nodemailer.getTestMessageUrl(info);
-      console.log(`[EMAIL DISPATCH] Ethereal Preview URL: ${previewUrl}`);
-    } else if (mode === "console") {
-      console.log(`[EMAIL DISPATCH - CONSOLE FALLBACK] To: ${options.to} | Subject: ${options.subject}`);
-    } else {
-      console.log(`[EMAIL DISPATCH - SMTP] Sent message ID: ${info.messageId} to ${options.to}`);
-    }
-
-    return {
-      success: true,
-      messageId: info.messageId,
-      previewUrl,
-      mode,
-    };
+    return { success: true, messageId: info.messageId, mode: "smtp" };
   } catch (error: any) {
-    console.error("[EMAIL DISPATCH ERROR]", error);
-    const isConfigured = await isSmtpConfigured();
-    return {
-      success: false,
-      mode: isConfigured ? "smtp" : "console",
-      error: error.message || "Failed to send email",
-    };
+    console.error("[EMAIL ERROR]", error);
+    return { success: false, mode: "smtp", error: error.message || "Failed to send email" };
   }
 }
