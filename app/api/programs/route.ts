@@ -34,43 +34,42 @@ export async function GET(request: Request) {
         order: { createdAt: "DESC" },
       });
     } else if (authUser.role === UserRole.SUPERVISOR) {
-      // Supervisors see ACTIVE + DRAFT programs (not ARCHIVED unless they're in it)
-      programs = await programRepo.find({
-        relations: { createdBy: true },
-        order: { createdAt: "DESC" },
-      });
-      // Filter: ACTIVE, DRAFT, or ARCHIVED-only-if-member
+      // Supervisors see ACTIVE + DRAFT programs (and ARCHIVED only if they're enrolled)
       const memberships = await programSupervisorRepo.find({
         where: { supervisorId: authUser.id },
       });
-      const memberProgramIds = new Set(memberships.map((m) => m.programId));
-      programs = programs.filter(
-        (p) =>
-          p.status === ProgramStatus.ACTIVE ||
-          p.status === ProgramStatus.DRAFT ||
-          memberProgramIds.has(p.id)
-      );
-    } else {
-      // Supervisees see only ACTIVE programs (DRAFT is hidden from them)
+      const memberProgramIds = Array.from(new Set(memberships.map((m) => m.programId)));
+
+      const whereConditions: any[] = [
+        { status: ProgramStatus.ACTIVE },
+        { status: ProgramStatus.DRAFT },
+      ];
+      if (memberProgramIds.length > 0) {
+        whereConditions.push({ id: In(memberProgramIds), status: ProgramStatus.ARCHIVED });
+      }
+
       programs = await programRepo.find({
-        where: { status: ProgramStatus.ACTIVE },
+        where: whereConditions,
         relations: { createdBy: true },
         order: { createdAt: "DESC" },
       });
-      // Also include archived programs they're in
+    } else {
+      // Supervisees see ACTIVE programs (and ARCHIVED only if they're enrolled)
       const memberships = await programSuperviseeRepo.find({
         where: { superviseeId: authUser.id },
       });
-      const memberProgramIds = new Set(memberships.map((m) => m.programId));
-      const archivedPrograms = await programRepo.find({
-        where: { status: ProgramStatus.ARCHIVED },
-        relations: { createdBy: true },
-      });
-      for (const ap of archivedPrograms) {
-        if (memberProgramIds.has(ap.id)) {
-          programs.push(ap);
-        }
+      const memberProgramIds = Array.from(new Set(memberships.map((m) => m.programId)));
+
+      const whereConditions: any[] = [{ status: ProgramStatus.ACTIVE }];
+      if (memberProgramIds.length > 0) {
+        whereConditions.push({ id: In(memberProgramIds), status: ProgramStatus.ARCHIVED });
       }
+
+      programs = await programRepo.find({
+        where: whereConditions,
+        relations: { createdBy: true },
+        order: { createdAt: "DESC" },
+      });
     }
 
     if (programs.length === 0) {
