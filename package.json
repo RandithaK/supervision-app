@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "sonar": "sonar-scanner-npm"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -41,6 +42,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
+    "sonarqube-scanner": "^5.0.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
     "typescript": "^5"

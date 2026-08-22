@@ -1,0 +1,236 @@
+name: SonarQube Analysis
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  sonarqube:
+    name: SonarQube Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set max_map_count for SonarQube Elasticsearch
+        run: sudo sysctl -w vm.max_map_count=262144
+
+      - name: Start SonarQube
+        run: |
+          docker run -d --name sonarqube \
+            -p 9000:9000 \
+            -e SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true \
+            sonarqube:community
+
+      - name: Wait for SonarQube to be ready
+        run: |
+          timeout 180 bash -c '
+            until curl -s http://localhost:9000/api/system/status | grep -q "\"status\":\"UP\""; do
+              sleep 5
+            done
+          '
+
+      - name: Generate analysis token
+        id: sonar_token
+        run: |
+          curl -s -u admin:admin -X POST \
+            "http://localhost:9000/api/users/change_password?login=admin&previousPassword=admin&password=AdminPassword123!"
+          RESPONSE=$(curl -s -u admin:AdminPassword123! -X POST \
+            "http://localhost:9000/api/user_tokens/generate?name=github-action-runner")
+          TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*' | cut -d'"' -f4)
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run SonarQube Scanner
+        run: npm run sonar
+        env:
+          SONAR_HOST_URL: http://localhost:9000
+          SONAR_TOKEN: ${{ steps.sonar_token.outputs.token }}
+
+      - name: Publish Detailed Summary to GitHub Actions
+        if: always()
+        env:
+          SONAR_TOKEN: ${{ steps.sonar_token.outputs.token }}
+        run: |
+          node -e '
+          const fs = require("fs");
+
+          async function sonarGet(path) {
+            const auth = Buffer.from(process.env.SONAR_TOKEN + ":").toString("base64");
+            const res = await fetch("http://localhost:9000" + path, {
+              headers: { Authorization: "Basic " + auth }
+            });
+            return res.ok ? res.json() : null;
+          }
+
+          function severityIcon(sev) {
+            return { BLOCKER: "🔴", CRITICAL: "🟠", MAJOR: "🟡", MINOR: "🔵", INFO: "⚪" }[sev] || "⚪";
+          }
+
+          function typeIcon(type) {
+            return { BUG: "🐛", VULNERABILITY: "🔓", CODE_SMELL: "🧹", SECURITY_HOTSPOT: "🔥" }[type] || "❓";
+          }
+
+          function shortPath(path) {
+            // Strip the project prefix from file paths for readability
+            return path.replace(/^supervision-app:/, "");
+          }
+
+          async function generateSummary() {
+            try {
+              // 1. Quality Gate status with individual conditions
+              const qgData = await sonarGet("/api/qualitygates/project_status?projectKey=supervision-app");
+              const qgStatus = qgData?.projectStatus?.status ?? "UNKNOWN";
+              const qgConditions = qgData?.projectStatus?.conditions ?? [];
+
+              // 2. Overall metrics
+              const mData = await sonarGet("/api/measures/component?component=supervision-app&metricKeys=bugs,vulnerabilities,code_smells,security_hotspots,duplicated_lines_density,ncloc,coverage,sqale_debt_ratio,reliability_rating,security_rating,sqale_rating");
+              const measures = (mData?.component?.measures ?? []).reduce((acc, m) => ({ ...acc, [m.metric]: m.value }), {});
+
+              // 3. Bugs
+              const bugsData = await sonarGet("/api/issues/search?componentKeys=supervision-app&types=BUG&severities=BLOCKER,CRITICAL,MAJOR,MINOR,INFO&ps=20&s=SEVERITY&asc=false");
+              const bugs = bugsData?.issues ?? [];
+
+              // 4. Vulnerabilities
+              const vulnData = await sonarGet("/api/issues/search?componentKeys=supervision-app&types=VULNERABILITY&severities=BLOCKER,CRITICAL,MAJOR,MINOR,INFO&ps=20&s=SEVERITY&asc=false");
+              const vulns = vulnData?.issues ?? [];
+
+              // 5. Security Hotspots
+              const hotspotData = await sonarGet("/api/hotspots/search?projectKey=supervision-app&ps=15");
+              const hotspots = hotspotData?.hotspots ?? [];
+
+              // 6. Top Code Smells (only show BLOCKER + CRITICAL to avoid flooding the report)
+              const smellData = await sonarGet("/api/issues/search?componentKeys=supervision-app&types=CODE_SMELL&severities=BLOCKER,CRITICAL&ps=15&s=SEVERITY&asc=false");
+              const smells = smellData?.issues ?? [];
+
+              // --- Build Markdown ---
+              const qgBadge = qgStatus === "OK" ? "✅ **PASSED**" : qgStatus === "ERROR" ? "❌ **FAILED**" : "⚠️ **" + qgStatus + "**";
+              const ratingLabel = (r) => ({ "1": "A", "2": "B", "3": "C", "4": "D", "5": "E" }[r] || r);
+
+              let md = `## 📊 SonarQube — Code Quality Report\n\n`;
+
+              // Quality Gate banner
+              md += `### Quality Gate: ${qgBadge}\n\n`;
+
+              // Quality Gate conditions breakdown
+              if (qgConditions.length > 0) {
+                md += `<details><summary>Quality Gate Conditions</summary>\n\n`;
+                md += `| Condition | Status | Actual | Threshold |\n`;
+                md += `| :--- | :---: | :---: | :---: |\n`;
+                for (const c of qgConditions) {
+                  const icon = c.status === "OK" ? "✅" : c.status === "ERROR" ? "❌" : "⚠️";
+                  md += `| ${c.metricKey.replace(/_/g, " ")} | ${icon} | ${c.actualValue ?? "—"} | ${c.errorThreshold ?? "—"} |\n`;
+                }
+                md += `\n</details>\n\n`;
+              }
+
+              // Ratings + Metrics overview
+              md += `---\n\n### 📈 Metrics Overview\n\n`;
+              md += `| Category | Metric | Value |\n`;
+              md += `| :--- | :--- | :---: |\n`;
+              md += `| Reliability | 🐛 Bugs | **${measures.bugs ?? 0}** |\n`;
+              md += `| Reliability | Rating | **${ratingLabel(measures.reliability_rating) ?? "—"}** |\n`;
+              md += `| Security | 🔓 Vulnerabilities | **${measures.vulnerabilities ?? 0}** |\n`;
+              md += `| Security | Rating | **${ratingLabel(measures.security_rating) ?? "—"}** |\n`;
+              md += `| Security | 🔥 Security Hotspots | **${measures.security_hotspots ?? 0}** |\n`;
+              md += `| Maintainability | 🧹 Code Smells | **${measures.code_smells ?? 0}** |\n`;
+              md += `| Maintainability | Rating | **${ratingLabel(measures.sqale_rating) ?? "—"}** |\n`;
+              md += `| Maintainability | Technical Debt Ratio | **${measures.sqale_debt_ratio ? Number(measures.sqale_debt_ratio).toFixed(1) + "%" : "—"}** |\n`;
+              md += `| Duplication | 📋 Duplicated Lines | **${measures.duplicated_lines_density ? Number(measures.duplicated_lines_density).toFixed(1) + "%" : "0.0%"}** |\n`;
+              md += `| Size | 📏 Lines of Code | **${measures.ncloc ? Number(measures.ncloc).toLocaleString() : "—"}** |\n`;
+              md += `\n`;
+
+              // Bugs list
+              md += `---\n\n### 🐛 Bugs (${bugsData?.total ?? 0} total)\n\n`;
+              if (bugs.length > 0) {
+                md += `| Severity | File | Line | Message |\n`;
+                md += `| :---: | :--- | :---: | :--- |\n`;
+                for (const issue of bugs) {
+                  const sev = severityIcon(issue.severity);
+                  const file = shortPath(issue.component);
+                  const line = issue.line ?? "—";
+                  const msg = issue.message.length > 80 ? issue.message.slice(0, 77) + "..." : issue.message;
+                  md += `| ${sev} ${issue.severity} | \`${file}\` | ${line} | ${msg} |\n`;
+                }
+                if ((bugsData?.total ?? 0) > 20) md += `\n> Showing top 20 of ${bugsData.total} bugs.\n`;
+              } else {
+                md += `> 🎉 No bugs found!\n`;
+              }
+              md += `\n`;
+
+              // Vulnerabilities list
+              md += `---\n\n### 🔓 Vulnerabilities (${vulnData?.total ?? 0} total)\n\n`;
+              if (vulns.length > 0) {
+                md += `| Severity | File | Line | Message |\n`;
+                md += `| :---: | :--- | :---: | :--- |\n`;
+                for (const issue of vulns) {
+                  const sev = severityIcon(issue.severity);
+                  const file = shortPath(issue.component);
+                  const line = issue.line ?? "—";
+                  const msg = issue.message.length > 80 ? issue.message.slice(0, 77) + "..." : issue.message;
+                  md += `| ${sev} ${issue.severity} | \`${file}\` | ${line} | ${msg} |\n`;
+                }
+                if ((vulnData?.total ?? 0) > 20) md += `\n> Showing top 20 of ${vulnData.total} vulnerabilities.\n`;
+              } else {
+                md += `> 🎉 No vulnerabilities found!\n`;
+              }
+              md += `\n`;
+
+              // Security Hotspots list
+              md += `---\n\n### 🔥 Security Hotspots (${hotspotData?.paging?.total ?? 0} total)\n\n`;
+              if (hotspots.length > 0) {
+                md += `| Priority | File | Line | Message |\n`;
+                md += `| :---: | :--- | :---: | :--- |\n`;
+                for (const hs of hotspots) {
+                  const file = shortPath(hs.component);
+                  const line = hs.line ?? "—";
+                  const msg = hs.message.length > 80 ? hs.message.slice(0, 77) + "..." : hs.message;
+                  md += `| ${hs.vulnerabilityProbability} | \`${file}\` | ${line} | ${msg} |\n`;
+                }
+              } else {
+                md += `> 🎉 No security hotspots found!\n`;
+              }
+              md += `\n`;
+
+              // Top Critical Code Smells
+              md += `---\n\n### 🧹 Critical / Blocker Code Smells (${smellData?.total ?? 0} total)\n\n`;
+              if (smells.length > 0) {
+                md += `| Severity | File | Line | Message |\n`;
+                md += `| :---: | :--- | :---: | :--- |\n`;
+                for (const issue of smells) {
+                  const sev = severityIcon(issue.severity);
+                  const file = shortPath(issue.component);
+                  const line = issue.line ?? "—";
+                  const msg = issue.message.length > 80 ? issue.message.slice(0, 77) + "..." : issue.message;
+                  md += `| ${sev} ${issue.severity} | \`${file}\` | ${line} | ${msg} |\n`;
+                }
+              } else {
+                md += `> ✅ No blocker or critical code smells found!\n`;
+              }
+              md += `\n`;
+
+              if (process.env.GITHUB_STEP_SUMMARY) {
+                fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, md);
+              }
+              console.log(md);
+            } catch (err) {
+              console.error("Failed to generate summary:", err);
+            }
+          }
+          generateSummary();
+          '
