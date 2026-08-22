@@ -45,9 +45,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 export function useToast() {
   const context = useContext(ToastContext);
   if (!context) {
+    console.warn("[useToast] ToastProvider is missing in the component tree. Notifications may not be displayed.");
     return {
       toasts: [],
-      addToast: (type: string, msg: string) => console.log(`[Toast ${type}]`, msg),
+      addToast: (type: string, msg: string) => console.warn(`[Toast ${type}]`, msg),
       removeToast: () => {},
     };
   }
@@ -79,13 +80,18 @@ function ToastItem({
   toast: ToastMessage;
   onDismiss: () => void;
 }) {
+  const onDismissRef = React.useRef(onDismiss);
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
+
   useEffect(() => {
     const duration = toast.duration ?? 4500;
     const timer = setTimeout(() => {
-      onDismiss();
+      onDismissRef.current();
     }, duration);
     return () => clearTimeout(timer);
-  }, [toast, onDismiss]);
+  }, [toast.id, toast.duration]);
 
   const styleMap = {
     success: {
