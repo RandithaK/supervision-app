@@ -7,8 +7,7 @@ import {
   getAssignmentRepository,
 } from "@/lib/db/data-source";
 import { UserRole } from "@/lib/db/entities/User";
-import { ProgramStatus } from "@/lib/db/entities/Program";
-import { ProgramParticipantStatus } from "@/lib/db/entities/ProgramSupervisor";
+import { ProgramStatus, type Program } from "@/lib/db/entities/Program";
 import { getAuthUser } from "@/lib/api-auth";
 import { EmailService } from "@/lib/email";
 
@@ -101,6 +100,44 @@ export async function GET(request: Request, { params }: RouteParams) {
   }
 }
 
+async function notifySupervisorsProgramStatusChanged(
+  programId: string,
+  program: Program,
+  oldStatus: ProgramStatus
+) {
+  const programSupervisorRepo = await getProgramSupervisorRepository();
+  const supervisors = await programSupervisorRepo.find({
+    where: { programId },
+    relations: { supervisor: true },
+  });
+
+  const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://localhost:3000"}/supervisor`;
+  const badgeColor =
+    program.status === ProgramStatus.ACTIVE
+      ? "green"
+      : program.status === ProgramStatus.DRAFT
+      ? "yellow"
+      : "muted";
+
+  for (const s of supervisors) {
+    if (s.supervisor?.email) {
+      EmailService.sendEvent({
+        eventType: "PROGRAM_STATUS_CHANGED",
+        to: s.supervisor.email,
+        payload: {
+          recipientName: s.supervisor.name,
+          programName: program.name,
+          newStatus: program.status,
+          badgeColor,
+          statusExplanation: `The program status has transitioned from ${oldStatus} to ${program.status}.`,
+          updatedAt: new Date().toLocaleDateString(),
+          dashboardUrl,
+        },
+      }).catch((err) => console.error("Failed to dispatch program status email:", err));
+    }
+  }
+}
+
 // PATCH /api/programs/[programId] — Update program (Admin/SuperAdmin only)
 export async function PATCH(request: Request, { params }: RouteParams) {
   try {
@@ -126,10 +163,10 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     const body = await request.json();
     const { name, description, status } = body;
     const oldStatus = program.status;
-    let statusChanged = false;
 
     if (name !== undefined) program.name = name;
     if (description !== undefined) program.description = description;
+
     if (status !== undefined) {
       const validStatuses = Object.values(ProgramStatus) as string[];
       if (!validStatuses.includes(status)) {
@@ -138,40 +175,13 @@ export async function PATCH(request: Request, { params }: RouteParams) {
           { status: 400 }
         );
       }
-      if (program.status !== (status as ProgramStatus)) {
-        statusChanged = true;
-        program.status = status as ProgramStatus;
-      }
+      program.status = status as ProgramStatus;
     }
 
     await programRepo.save(program);
 
-    if (statusChanged) {
-      // Notify enrolled supervisors of the status change
-      const programSupervisorRepo = await getProgramSupervisorRepository();
-      const supervisors = await programSupervisorRepo.find({
-        where: { programId },
-        relations: { supervisor: true },
-      });
-
-      const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}`;
-      for (const s of supervisors) {
-        if (s.supervisor?.email) {
-          EmailService.sendEvent({
-            eventType: "PROGRAM_STATUS_CHANGED",
-            to: s.supervisor.email,
-            payload: {
-              recipientName: s.supervisor.name,
-              programName: program.name,
-              newStatus: program.status,
-              badgeColor: program.status === ProgramStatus.ACTIVE ? "green" : program.status === ProgramStatus.DRAFT ? "yellow" : "muted",
-              statusExplanation: `The program status has transitioned from ${oldStatus} to ${program.status}.`,
-              updatedAt: new Date().toLocaleDateString(),
-              dashboardUrl: `${dashboardUrl}/supervisor`,
-            },
-          }).catch((err) => console.error("Failed to dispatch program status email:", err));
-        }
-      }
+    if (status !== undefined && oldStatus !== program.status) {
+      notifySupervisorsProgramStatusChanged(programId, program, oldStatus);
     }
 
     return NextResponse.json({

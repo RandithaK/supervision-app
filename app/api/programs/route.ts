@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { NextResponse } from "next/server";
-import { In } from "typeorm";
+import { In, type Repository } from "typeorm";
 import {
   getProgramRepository,
   getProgramSupervisorRepository,
@@ -8,10 +8,87 @@ import {
   getUserRepository,
 } from "@/lib/db/data-source";
 import { UserRole } from "@/lib/db/entities/User";
-import { ProgramStatus } from "@/lib/db/entities/Program";
-import { ProgramParticipantStatus } from "@/lib/db/entities/ProgramSupervisor";
+import { ProgramStatus, type Program } from "@/lib/db/entities/Program";
+import { ProgramParticipantStatus, type ProgramSupervisor } from "@/lib/db/entities/ProgramSupervisor";
+import { type ProgramSupervisee } from "@/lib/db/entities/ProgramSupervisee";
 import { getAuthUser } from "@/lib/api-auth";
 import { EmailService } from "@/lib/email";
+
+async function fetchProgramsForRole(
+  authUser: { id: string; role: UserRole },
+  programRepo: Repository<Program>,
+  programSupervisorRepo: Repository<ProgramSupervisor>,
+  programSuperviseeRepo: Repository<ProgramSupervisee>
+): Promise<Program[]> {
+  if (authUser.role === UserRole.ADMIN || authUser.role === UserRole.SUPERADMIN) {
+    return programRepo.find({
+      relations: { createdBy: true },
+      order: { createdAt: "DESC" },
+    });
+  }
+
+  if (authUser.role === UserRole.SUPERVISOR) {
+    const memberships = await programSupervisorRepo.find({
+      where: { supervisorId: authUser.id },
+    });
+    const memberProgramIds = Array.from(new Set(memberships.map((m) => m.programId)));
+    const whereConditions: any[] = [
+      { status: ProgramStatus.ACTIVE },
+      { status: ProgramStatus.DRAFT },
+    ];
+    if (memberProgramIds.length > 0) {
+      whereConditions.push({ id: In(memberProgramIds), status: ProgramStatus.ARCHIVED });
+    }
+    return programRepo.find({
+      where: whereConditions,
+      relations: { createdBy: true },
+      order: { createdAt: "DESC" },
+    });
+  }
+
+  // Supervisee
+  const memberships = await programSuperviseeRepo.find({
+    where: { superviseeId: authUser.id },
+  });
+  const memberProgramIds = Array.from(new Set(memberships.map((m) => m.programId)));
+  const whereConditions: any[] = [{ status: ProgramStatus.ACTIVE }];
+  if (memberProgramIds.length > 0) {
+    whereConditions.push({ id: In(memberProgramIds), status: ProgramStatus.ARCHIVED });
+  }
+
+  return programRepo.find({
+    where: whereConditions,
+    relations: { createdBy: true },
+    order: { createdAt: "DESC" },
+  });
+}
+
+async function fetchUserMemberships(
+  authUser: { id: string; role: UserRole },
+  programIds: string[],
+  programSupervisorRepo: Repository<ProgramSupervisor>,
+  programSuperviseeRepo: Repository<ProgramSupervisee>
+): Promise<Map<string, { status: string; joinedAt: Date }>> {
+  const map = new Map<string, { status: string; joinedAt: Date }>();
+
+  if (authUser.role === UserRole.SUPERVISOR) {
+    const myMemberships = await programSupervisorRepo.find({
+      where: { programId: In(programIds), supervisorId: authUser.id },
+    });
+    for (const m of myMemberships) {
+      map.set(m.programId, { status: m.status, joinedAt: m.joinedAt });
+    }
+  } else if (authUser.role === UserRole.SUPERVISEE) {
+    const myMemberships = await programSuperviseeRepo.find({
+      where: { programId: In(programIds), superviseeId: authUser.id },
+    });
+    for (const m of myMemberships) {
+      map.set(m.programId, { status: "ACTIVE", joinedAt: m.joinedAt });
+    }
+  }
+
+  return map;
+}
 
 // GET /api/programs — List programs based on user role
 export async function GET(request: Request) {
@@ -25,67 +102,27 @@ export async function GET(request: Request) {
     const programSupervisorRepo = await getProgramSupervisorRepository();
     const programSuperviseeRepo = await getProgramSuperviseeRepository();
 
-    let programs;
-
-    if (authUser.role === UserRole.ADMIN || authUser.role === UserRole.SUPERADMIN) {
-      // Admins see all programs
-      programs = await programRepo.find({
-        relations: { createdBy: true },
-        order: { createdAt: "DESC" },
-      });
-    } else if (authUser.role === UserRole.SUPERVISOR) {
-      // Supervisors see ACTIVE + DRAFT programs (and ARCHIVED only if they're enrolled)
-      const memberships = await programSupervisorRepo.find({
-        where: { supervisorId: authUser.id },
-      });
-      const memberProgramIds = Array.from(new Set(memberships.map((m) => m.programId)));
-
-      const whereConditions: any[] = [
-        { status: ProgramStatus.ACTIVE },
-        { status: ProgramStatus.DRAFT },
-      ];
-      if (memberProgramIds.length > 0) {
-        whereConditions.push({ id: In(memberProgramIds), status: ProgramStatus.ARCHIVED });
-      }
-
-      programs = await programRepo.find({
-        where: whereConditions,
-        relations: { createdBy: true },
-        order: { createdAt: "DESC" },
-      });
-    } else {
-      // Supervisees see ACTIVE programs (and ARCHIVED only if they're enrolled)
-      const memberships = await programSuperviseeRepo.find({
-        where: { superviseeId: authUser.id },
-      });
-      const memberProgramIds = Array.from(new Set(memberships.map((m) => m.programId)));
-
-      const whereConditions: any[] = [{ status: ProgramStatus.ACTIVE }];
-      if (memberProgramIds.length > 0) {
-        whereConditions.push({ id: In(memberProgramIds), status: ProgramStatus.ARCHIVED });
-      }
-
-      programs = await programRepo.find({
-        where: whereConditions,
-        relations: { createdBy: true },
-        order: { createdAt: "DESC" },
-      });
-    }
+    const programs = await fetchProgramsForRole(
+      authUser,
+      programRepo,
+      programSupervisorRepo,
+      programSuperviseeRepo
+    );
 
     if (programs.length === 0) {
       return NextResponse.json({ success: true, programs: [] });
     }
 
-    // Bulk-fetch participant memberships to eliminate N+1 query waterfall
     const programIds = programs.map((p) => p.id);
 
-    const [activeSupMemberships, supveeMemberships] = await Promise.all([
+    const [activeSupMemberships, supveeMemberships, userMembershipMap] = await Promise.all([
       programSupervisorRepo.find({
         where: { programId: In(programIds), status: ProgramParticipantStatus.ACTIVE },
       }),
       programSuperviseeRepo.find({
         where: { programId: In(programIds) },
       }),
+      fetchUserMemberships(authUser, programIds, programSupervisorRepo, programSuperviseeRepo),
     ]);
 
     const supervisorCountMap = new Map<string, number>();
@@ -96,24 +133,6 @@ export async function GET(request: Request) {
     const superviseeCountMap = new Map<string, number>();
     for (const m of supveeMemberships) {
       superviseeCountMap.set(m.programId, (superviseeCountMap.get(m.programId) || 0) + 1);
-    }
-
-    // Fetch user-specific memberships across all programs in one query
-    const userMembershipMap = new Map<string, { status: string; joinedAt: Date }>();
-    if (authUser.role === UserRole.SUPERVISOR) {
-      const myMemberships = await programSupervisorRepo.find({
-        where: { programId: In(programIds), supervisorId: authUser.id },
-      });
-      for (const m of myMemberships) {
-        userMembershipMap.set(m.programId, { status: m.status, joinedAt: m.joinedAt });
-      }
-    } else if (authUser.role === UserRole.SUPERVISEE) {
-      const myMemberships = await programSuperviseeRepo.find({
-        where: { programId: In(programIds), superviseeId: authUser.id },
-      });
-      for (const m of myMemberships) {
-        userMembershipMap.set(m.programId, { status: "ACTIVE", joinedAt: m.joinedAt });
-      }
     }
 
     const enriched = programs.map((p) => ({
@@ -137,6 +156,30 @@ export async function GET(request: Request) {
       { success: false, error: error.message || "Failed to fetch programs" },
       { status: 500 }
     );
+  }
+}
+
+async function notifySupervisorsProgramCreated(newProgram: Program, authorName: string) {
+  const userRepo = await getUserRepository();
+  const supervisors = await userRepo.find({ where: { role: UserRole.SUPERVISOR } });
+  const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://localhost:3000"}/supervisor`;
+
+  for (const sup of supervisors) {
+    if (sup.email) {
+      EmailService.sendEvent({
+        eventType: "PROGRAM_CREATED",
+        to: sup.email,
+        payload: {
+          recipientName: sup.name,
+          programName: newProgram.name,
+          programDescription: newProgram.description || "No description provided.",
+          programStatus: newProgram.status,
+          createdByName: authorName,
+          createdAt: new Date().toLocaleDateString(),
+          dashboardUrl,
+        },
+      }).catch((err) => console.error("Failed to send program created email:", err));
+    }
   }
 }
 
@@ -179,27 +222,7 @@ export async function POST(request: Request) {
 
     // If program is created directly as ACTIVE, notify supervisors
     if (programStatus === ProgramStatus.ACTIVE) {
-      const userRepo = await getUserRepository();
-      const supervisors = await userRepo.find({ where: { role: UserRole.SUPERVISOR } });
-      const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisor`;
-
-      for (const sup of supervisors) {
-        if (sup.email) {
-          EmailService.sendEvent({
-            eventType: "PROGRAM_CREATED",
-            to: sup.email,
-            payload: {
-              recipientName: sup.name,
-              programName: newProgram.name,
-              programDescription: newProgram.description || "No description provided.",
-              programStatus: newProgram.status,
-              createdByName: authUser.name,
-              createdAt: new Date().toLocaleDateString(),
-              dashboardUrl,
-            },
-          }).catch((err) => console.error("Failed to send program created email:", err));
-        }
-      }
+      notifySupervisorsProgramCreated(newProgram, authUser.name);
     }
 
     return NextResponse.json(

@@ -6,8 +6,8 @@ import {
   getAssignmentRepository,
   getUserRepository,
 } from "@/lib/db/data-source";
-import { UserRole } from "@/lib/db/entities/User";
-import { ProgramStatus } from "@/lib/db/entities/Program";
+import { UserRole, type User } from "@/lib/db/entities/User";
+import { ProgramStatus, type Program } from "@/lib/db/entities/Program";
 import { ProgramParticipantStatus } from "@/lib/db/entities/ProgramSupervisor";
 import { getAuthUser } from "@/lib/api-auth";
 import { EmailService } from "@/lib/email";
@@ -146,7 +146,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     const userRepo = await getUserRepository();
     const supervisorUser = await userRepo.findOneBy({ id: supervisorId });
     if (supervisorUser) {
-      const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisor`;
+      const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://localhost:3000"}/supervisor`;
       EmailService.sendEvent({
         eventType: "PROGRAM_SUPERVISOR_JOINED",
         to: supervisorUser.email,
@@ -171,6 +171,51 @@ export async function POST(request: Request, { params }: RouteParams) {
   }
 }
 
+function resolveTargetSupervisorId(
+  authUser: { id: string; role: UserRole },
+  supervisorIdFromBody?: string
+): { targetSupervisorId?: string; error?: { message: string; status: number } } {
+  if (authUser.role === UserRole.SUPERVISOR) {
+    return { targetSupervisorId: authUser.id };
+  }
+  if (authUser.role === UserRole.ADMIN || authUser.role === UserRole.SUPERADMIN) {
+    if (!supervisorIdFromBody) {
+      return { error: { message: "supervisorId required for admin action.", status: 400 } };
+    }
+    return { targetSupervisorId: supervisorIdFromBody };
+  }
+  return { error: { message: "Forbidden.", status: 403 } };
+}
+
+async function sendSupervisorStatusNotification(
+  supervisorId: string,
+  program: Program,
+  status: ProgramParticipantStatus
+) {
+  const userRepo = await getUserRepository();
+  const supervisorUser = await userRepo.findOneBy({ id: supervisorId });
+  if (!supervisorUser?.email) return;
+
+  const isActive = status === ProgramParticipantStatus.ACTIVE;
+  const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://localhost:3000"}/supervisor`;
+
+  EmailService.sendEvent({
+    eventType: "PROGRAM_SUPERVISOR_STATUS_CHANGED",
+    to: supervisorUser.email,
+    payload: {
+      supervisorName: supervisorUser.name,
+      programName: program.name,
+      statusText: isActive ? "Active" : "Disabled",
+      badgeColor: isActive ? "green" : "yellow",
+      statusExplanation: isActive
+        ? "You are now active and visible to supervisees in this program."
+        : "You are currently disabled in this program. Supervisees cannot send you new applications, but existing assignments remain active.",
+      updatedAt: new Date().toLocaleDateString(),
+      dashboardUrl,
+    },
+  }).catch((err) => console.error("Failed to send supervisor status change email:", err));
+}
+
 // PATCH /api/programs/[programId]/supervisors — Enable/disable supervisor in program
 export async function PATCH(request: Request, { params }: RouteParams) {
   try {
@@ -190,20 +235,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       );
     }
 
-    // Determine target supervisor
-    let targetSupervisorId: string;
-    if (authUser.role === UserRole.SUPERVISOR) {
-      targetSupervisorId = authUser.id;
-    } else if (authUser.role === UserRole.ADMIN || authUser.role === UserRole.SUPERADMIN) {
-      if (!supervisorId) {
-        return NextResponse.json(
-          { success: false, error: "supervisorId required for admin action." },
-          { status: 400 }
-        );
-      }
-      targetSupervisorId = supervisorId;
-    } else {
-      return NextResponse.json({ success: false, error: "Forbidden." }, { status: 403 });
+    const { targetSupervisorId, error } = resolveTargetSupervisorId(authUser, supervisorId);
+    if (error || !targetSupervisorId) {
+      return NextResponse.json({ success: false, error: error?.message || "Forbidden." }, { status: error?.status || 403 });
     }
 
     const programRepo = await getProgramRepository();
@@ -228,28 +262,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     membership.status = status;
     await programSupervisorRepo.save(membership);
 
-    // Send confirmation email
-    const userRepo = await getUserRepository();
-    const supervisorUser = await userRepo.findOneBy({ id: targetSupervisorId });
-    if (supervisorUser?.email) {
-      const isActive = status === ProgramParticipantStatus.ACTIVE;
-      const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/supervisor`;
-      EmailService.sendEvent({
-        eventType: "PROGRAM_SUPERVISOR_STATUS_CHANGED",
-        to: supervisorUser.email,
-        payload: {
-          supervisorName: supervisorUser.name,
-          programName: program.name,
-          statusText: isActive ? "Active" : "Disabled",
-          badgeColor: isActive ? "green" : "yellow",
-          statusExplanation: isActive
-            ? "You are now active and visible to supervisees in this program."
-            : "You are currently disabled in this program. Supervisees cannot send you new applications, but existing assignments remain active.",
-          updatedAt: new Date().toLocaleDateString(),
-          dashboardUrl,
-        },
-      }).catch((err) => console.error("Failed to send supervisor status change email:", err));
-    }
+    sendSupervisorStatusNotification(targetSupervisorId, program, status);
 
     return NextResponse.json({
       success: true,

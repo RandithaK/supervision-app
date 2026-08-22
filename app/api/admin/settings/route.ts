@@ -3,7 +3,11 @@ import { NextResponse } from "next/server";
 import { getSettingRepository } from "@/lib/db/data-source";
 import { getAuthUser } from "@/lib/api-auth";
 import { UserRole } from "@/lib/db/entities/User";
+import { type AppSetting } from "@/lib/db/entities/AppSetting";
 import { clearTransporterCache } from "@/lib/email/smtp-sender";
+import type { Repository } from "typeorm";
+
+const SMTP_KEYS = ["SMTP_HOST", "SMTP_PORT", "SMTP_SECURE", "SMTP_USER", "SMTP_PASS", "SMTP_FROM_NAME", "SMTP_FROM_EMAIL"];
 
 export async function GET(request: Request) {
   try {
@@ -33,6 +37,33 @@ export async function GET(request: Request) {
   }
 }
 
+async function upsertSingleSetting(
+  settingRepo: Repository<AppSetting>,
+  key: string,
+  value: string | null | undefined
+): Promise<void> {
+  if (!key || (key === "SMTP_PASS" && value === "********")) {
+    return;
+  }
+
+  const setting = await settingRepo.findOneBy({ key });
+
+  if (value === "" || value === null || value === undefined) {
+    if (setting) {
+      await settingRepo.remove(setting);
+    }
+    return;
+  }
+
+  if (setting) {
+    setting.value = value;
+    await settingRepo.save(setting);
+  } else {
+    const newSetting = settingRepo.create({ key, value });
+    await settingRepo.save(newSetting);
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const session = await getAuthUser(request);
@@ -50,33 +81,11 @@ export async function POST(request: Request) {
     const settingRepo = await getSettingRepository();
     
     for (const item of settings) {
-      const { key, value } = item;
-      if (!key) continue;
-
-      // Skip password if it's the masked placeholder
-      if (key === "SMTP_PASS" && value === "********") {
-        continue;
-      }
-
-      let setting = await settingRepo.findOneBy({ key });
-
-      if (value === "" || value === null || value === undefined) {
-        if (setting) {
-          await settingRepo.remove(setting);
-        }
-      } else {
-        if (setting) {
-          setting.value = value;
-        } else {
-          setting = settingRepo.create({ key, value });
-        }
-        await settingRepo.save(setting);
-      }
+      await upsertSingleSetting(settingRepo, item.key, item.value);
     }
 
     // Force SMTP module to reconnect on next dispatch if SMTP settings were updated
-    const smtpKeys = ["SMTP_HOST", "SMTP_PORT", "SMTP_SECURE", "SMTP_USER", "SMTP_PASS", "SMTP_FROM_NAME", "SMTP_FROM_EMAIL"];
-    if (settings.some(s => smtpKeys.includes(s.key))) {
+    if (settings.some((s) => SMTP_KEYS.includes(s.key))) {
       clearTransporterCache();
     }
 

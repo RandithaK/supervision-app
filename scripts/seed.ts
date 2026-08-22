@@ -6,9 +6,10 @@ import {
   getProgramSupervisorRepository,
   getProgramSuperviseeRepository,
 } from "../lib/db/data-source";
-import { UserRole } from "../lib/db/entities/User";
+import { UserRole, type User } from "../lib/db/entities/User";
 import { ProgramStatus } from "../lib/db/entities/Program";
 import { ProgramParticipantStatus } from "../lib/db/entities/ProgramSupervisor";
+import type { Repository } from "typeorm";
 
 export interface SeededUserSummary {
   id: string;
@@ -19,13 +20,60 @@ export interface SeededUserSummary {
   areasOfInterest?: string[] | null;
 }
 
-export async function seedDatabase(): Promise<{
-  success: boolean;
-  message: string;
-  users: SeededUserSummary[];
-}> {
-  const userRepository = await getUserRepository();
+interface SampleProgramDef {
+  name: string;
+  description: string;
+  status: ProgramStatus;
+}
 
+const SAMPLE_PROGRAMS: SampleProgramDef[] = [
+  {
+    name: "CBT Supervision 2026",
+    description: "Clinical supervision program for Cognitive Behavioral Therapy practitioners.",
+    status: ProgramStatus.ACTIVE,
+  },
+  {
+    name: "Family Therapy Practicum",
+    description: "Supervised practicum for family therapy trainees.",
+    status: ProgramStatus.ACTIVE,
+  },
+  {
+    name: "Upcoming Trauma Workshop",
+    description: "Draft program for next semester's trauma-focused supervision.",
+    status: ProgramStatus.DRAFT,
+  },
+];
+
+async function seedSingleUser(
+  userRepository: Repository<User>,
+  sample: { name: string; email: string; password: string; role: UserRole; areasOfInterest: string[] | null },
+  defaultPassword: string
+): Promise<SeededUserSummary> {
+  let existing = await userRepository.findOneBy({ email: sample.email });
+
+  if (!existing) {
+    existing = userRepository.create(sample);
+    await userRepository.save(existing);
+  } else {
+    existing.password = sample.password;
+    existing.role = sample.role;
+    existing.name = sample.name;
+    existing.areasOfInterest = sample.areasOfInterest;
+    await userRepository.save(existing);
+  }
+
+  return {
+    id: existing.id,
+    name: existing.name,
+    email: existing.email,
+    role: existing.role,
+    passwordPlain: defaultPassword,
+    areasOfInterest: existing.areasOfInterest,
+  };
+}
+
+async function seedUsers(): Promise<SeededUserSummary[]> {
+  const userRepository = await getUserRepository();
   const defaultPassword = "password123";
   const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
@@ -82,113 +130,98 @@ export async function seedDatabase(): Promise<{
   ];
 
   const results: SeededUserSummary[] = [];
-
   for (const sample of sampleUsers) {
-    let existing = await userRepository.findOneBy({ email: sample.email });
-
-    if (!existing) {
-      existing = userRepository.create(sample);
-      await userRepository.save(existing);
-    } else {
-      existing.password = sample.password;
-      existing.role = sample.role;
-      existing.name = sample.name;
-      existing.areasOfInterest = sample.areasOfInterest;
-      await userRepository.save(existing);
-    }
-
-    results.push({
-      id: existing.id,
-      name: existing.name,
-      email: existing.email,
-      role: existing.role,
-      passwordPlain: defaultPassword,
-      areasOfInterest: existing.areasOfInterest,
-    });
+    const userSummary = await seedSingleUser(userRepository, sample, defaultPassword);
+    results.push(userSummary);
   }
 
-  // Seed sample programs
-  const programRepo = await getProgramRepository();
+  return results;
+}
+
+async function enrollSupervisors(programId: string, supervisors: SeededUserSummary[]) {
   const programSupervisorRepo = await getProgramSupervisorRepository();
+  for (const sv of supervisors) {
+    const existing = await programSupervisorRepo.findOneBy({
+      programId,
+      supervisorId: sv.id,
+    });
+    if (!existing) {
+      const membership = programSupervisorRepo.create({
+        programId,
+        supervisorId: sv.id,
+        status: ProgramParticipantStatus.ACTIVE,
+      });
+      await programSupervisorRepo.save(membership);
+    }
+  }
+}
+
+async function enrollSupervisees(programId: string, supervisees: SeededUserSummary[]) {
   const programSuperviseeRepo = await getProgramSuperviseeRepository();
+  for (const se of supervisees) {
+    const existing = await programSuperviseeRepo.findOneBy({
+      programId,
+      superviseeId: se.id,
+    });
+    if (!existing) {
+      const membership = programSuperviseeRepo.create({
+        programId,
+        superviseeId: se.id,
+      });
+      await programSuperviseeRepo.save(membership);
+    }
+  }
+}
 
-  const admin = results.find((u) => u.role === UserRole.ADMIN);
-  const supervisors = results.filter((u) => u.role === UserRole.SUPERVISOR);
-  const supervisees = results.filter((u) => u.role === UserRole.SUPERVISEE);
-
-  const samplePrograms = [
-    {
-      name: "CBT Supervision 2026",
-      description: "Clinical supervision program for Cognitive Behavioral Therapy practitioners.",
-      status: ProgramStatus.ACTIVE,
-    },
-    {
-      name: "Family Therapy Practicum",
-      description: "Supervised practicum for family therapy trainees.",
-      status: ProgramStatus.ACTIVE,
-    },
-    {
-      name: "Upcoming Trauma Workshop",
-      description: "Draft program for next semester's trauma-focused supervision.",
-      status: ProgramStatus.DRAFT,
-    },
-  ];
-
+async function seedPrograms(
+  adminId: string,
+  supervisors: SeededUserSummary[],
+  supervisees: SeededUserSummary[]
+) {
+  const programRepo = await getProgramRepository();
   console.log("\n📋 Seeding Programs...");
 
-  for (const sp of samplePrograms) {
-    let program = await programRepo.findOneBy({ name: sp.name });
-    if (!program) {
-      program = programRepo.create({
-        ...sp,
-        createdById: admin!.id,
-      });
-      await programRepo.save(program);
-      console.log(`   ✅ Created program: ${program.name} (${program.status})`);
-
-      // Add supervisors to ACTIVE programs
-      if (program.status === ProgramStatus.ACTIVE) {
-        for (const sv of supervisors) {
-          const existing = await programSupervisorRepo.findOneBy({
-            programId: program.id,
-            supervisorId: sv.id,
-          });
-          if (!existing) {
-            const membership = programSupervisorRepo.create({
-              programId: program.id,
-              supervisorId: sv.id,
-              status: ProgramParticipantStatus.ACTIVE,
-            });
-            await programSupervisorRepo.save(membership);
-          }
-        }
-
-        // Add supervisees to first program
-        if (sp.name === "CBT Supervision 2026") {
-          for (const se of supervisees) {
-            const existing = await programSuperviseeRepo.findOneBy({
-              programId: program.id,
-              superviseeId: se.id,
-            });
-            if (!existing) {
-              const membership = programSuperviseeRepo.create({
-                programId: program.id,
-                superviseeId: se.id,
-              });
-              await programSuperviseeRepo.save(membership);
-            }
-          }
-        }
-      }
-    } else {
-      console.log(`   ⏭️  Program already exists: ${program.name}`);
+  for (const sp of SAMPLE_PROGRAMS) {
+    const existingProgram = await programRepo.findOneBy({ name: sp.name });
+    if (existingProgram) {
+      console.log(`   ⏭️  Program already exists: ${existingProgram.name}`);
+      continue;
     }
+
+    const program = programRepo.create({
+      ...sp,
+      createdById: adminId,
+    });
+    await programRepo.save(program);
+    console.log(`   ✅ Created program: ${program.name} (${program.status})`);
+
+    if (program.status === ProgramStatus.ACTIVE) {
+      await enrollSupervisors(program.id, supervisors);
+      if (sp.name === "CBT Supervision 2026") {
+        await enrollSupervisees(program.id, supervisees);
+      }
+    }
+  }
+}
+
+export async function seedDatabase(): Promise<{
+  success: boolean;
+  message: string;
+  users: SeededUserSummary[];
+}> {
+  const users = await seedUsers();
+  const admin = users.find((u) => u.role === UserRole.ADMIN);
+  const supervisors = users.filter((u) => u.role === UserRole.SUPERVISOR);
+  const supervisees = users.filter((u) => u.role === UserRole.SUPERVISEE);
+
+  if (admin) {
+    await seedPrograms(admin.id, supervisors, supervisees);
   }
 
   return {
     success: true,
     message: "Database seeded successfully with user accounts, supervisor profiles, and sample programs.",
-    users: results,
+    users,
   };
 }
 
