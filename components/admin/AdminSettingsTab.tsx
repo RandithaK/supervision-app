@@ -55,7 +55,7 @@ export function AdminSettingsTab() {
     fetchSettings();
   }, [fetchSettings]);
 
-  const handleSaveSettings = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSaveSettings = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSavingSettings(true);
     setSettingsStatus(null);

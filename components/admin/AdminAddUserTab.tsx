@@ -28,7 +28,7 @@ export function AdminAddUserTab({ currentUser, onUserCreated }: AdminAddUserTabP
   const [createLoading, setCreateLoading] = useState(false);
   const [createStatus, setCreateStatus] = useState<{ success?: boolean; msg?: string } | null>(null);
 
-  const handleCreateUser = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleCreateUser = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setCreateLoading(true);
     setCreateStatus(null);
