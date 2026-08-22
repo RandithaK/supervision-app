@@ -17,6 +17,16 @@ interface ToastContextType {
   removeToast: (id: string) => void;
 }
 
+let toastIdCounter = 0;
+
+function generateToastId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  toastIdCounter = (toastIdCounter + 1) % Number.MAX_SAFE_INTEGER;
+  return `toast-${Date.now()}-${toastIdCounter}`;
+}
+
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -24,7 +34,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const addToast = useCallback(
     (type: "success" | "error" | "warning" | "info", message: string, title?: string, duration?: number) => {
-      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const id = generateToastId();
       setToasts((prev) => [...prev, { id, type, message, title, duration }]);
     },
     []

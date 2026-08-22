@@ -1,11 +1,12 @@
 import "reflect-metadata";
+import { randomInt } from "crypto";
 import { NextResponse } from "next/server";
 import { getUserRepository, getOtpRepository, getSettingRepository } from "@/lib/db/data-source";
 import { EmailService } from "@/lib/email";
 
-// Generate a random 6-digit number
+// Generate a cryptographically secure 6-digit number
 function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return randomInt(100000, 1000000).toString();
 }
 
 export async function POST(request: Request) {
