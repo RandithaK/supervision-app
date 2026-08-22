@@ -6,7 +6,7 @@ import {
   getAssignmentRepository,
   getUserRepository,
 } from "@/lib/db/data-source";
-import { UserRole, type User } from "@/lib/db/entities/User";
+import { UserRole } from "@/lib/db/entities/User";
 import { ProgramStatus, type Program } from "@/lib/db/entities/Program";
 import { ProgramParticipantStatus } from "@/lib/db/entities/ProgramSupervisor";
 import { getAuthUser } from "@/lib/api-auth";
@@ -49,23 +49,28 @@ export async function GET(request: Request, { params }: RouteParams) {
       relations: { supervisor: true },
     });
 
-    const supervisors = memberships.map((m) => ({
-      id: m.id,
-      status: m.status,
-      joinedAt: m.joinedAt,
-      supervisor: m.supervisor
-        ? {
-            id: m.supervisor.id,
-            name: m.supervisor.name,
-            email: m.supervisor.email,
-            areasOfInterest: Array.isArray(m.supervisor.areasOfInterest)
-              ? m.supervisor.areasOfInterest
-              : typeof m.supervisor.areasOfInterest === "string"
-              ? (m.supervisor.areasOfInterest as string).split(",").map((t) => t.trim()).filter(Boolean)
-              : [],
-          }
-        : null,
-    }));
+    const supervisors = memberships.map((m) => {
+      let areasOfInterest: string[] = [];
+      if (Array.isArray(m.supervisor?.areasOfInterest)) {
+        areasOfInterest = m.supervisor.areasOfInterest;
+      } else if (typeof m.supervisor?.areasOfInterest === "string") {
+        areasOfInterest = (m.supervisor.areasOfInterest as string).split(",").map((t) => t.trim()).filter(Boolean);
+      }
+
+      return {
+        id: m.id,
+        status: m.status,
+        joinedAt: m.joinedAt,
+        supervisor: m.supervisor
+          ? {
+              id: m.supervisor.id,
+              name: m.supervisor.name,
+              email: m.supervisor.email,
+              areasOfInterest,
+            }
+          : null,
+      };
+    });
 
     return NextResponse.json({ success: true, supervisors });
   } catch (error: any) {

@@ -8,9 +8,9 @@ import { ChevronDown, ChevronUp, Loader2, RefreshCw, ShieldCheck } from "lucide-
 import type { SupervisorReportItem } from "@/lib/pdf/admin-pdf-report";
 
 interface AdminBreakdownTabProps {
-  supervisorReport: SupervisorReportItem[];
-  loadingReport: boolean;
-  onRefreshReport: () => void;
+  readonly supervisorReport: SupervisorReportItem[];
+  readonly loadingReport: boolean;
+  readonly onRefreshReport: () => void;
 }
 
 export function AdminBreakdownTab({
@@ -87,7 +87,7 @@ export function AdminBreakdownTab({
                           : "General"}
                       </p>
                     </div>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0">
                       {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </Button>
                   </div>
@@ -101,8 +101,8 @@ export function AdminBreakdownTab({
                       </h4>
                       <div className="flex flex-wrap gap-1.5">
                         {sup.areasOfInterest.length > 0 ? (
-                          sup.areasOfInterest.map((interest, i) => (
-                            <Badge key={i} variant="secondary" className="text-xs font-normal">
+                          sup.areasOfInterest.map((interest) => (
+                            <Badge key={interest} variant="secondary" className="text-xs font-normal">
                               {interest}
                             </Badge>
                           ))
@@ -122,9 +122,9 @@ export function AdminBreakdownTab({
                         </p>
                       ) : (
                         <div className="divide-y divide-border/50 border border-border/50 rounded-lg overflow-hidden bg-card">
-                          {sup.students.map((st, i) => (
+                          {sup.students.map((st) => (
                             <div
-                              key={i}
+                              key={st.email}
                               className="p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                             >
                               <div className="space-y-0.5">

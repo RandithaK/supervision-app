@@ -41,9 +41,9 @@ const ROLE_STYLES: Record<string, { badge: string; border: string; dot: string }
 };
 
 interface AdminUsersTabProps {
-  userList: UserAccount[];
-  loadingUsers: boolean;
-  onRefreshUsers: () => void;
+  readonly userList: UserAccount[];
+  readonly loadingUsers: boolean;
+  readonly onRefreshUsers: () => void;
 }
 
 export function AdminUsersTab({
@@ -111,6 +111,7 @@ export function AdminUsersTab({
           <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
             {["ALL", "SUPERVISEE", "SUPERVISOR", "ADMIN", "SUPERADMIN"].map((r) => (
               <button
+                type="button"
                 key={r}
                 onClick={() => {
                   setRoleFilter(r);

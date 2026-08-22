@@ -4,7 +4,7 @@ import React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Bar, BarChart, CartesianGrid, Cell, LabelList, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, LabelList, Rectangle, XAxis, YAxis } from "recharts";
 import {
   ChartContainer,
   ChartTooltip,
@@ -22,9 +22,9 @@ const supervisorChartConfig = {
 } satisfies ChartConfig;
 
 interface AdminOverviewTabProps {
-  supervisorReport: SupervisorReportItem[];
-  loadingReport: boolean;
-  onRefreshReport: () => void;
+  readonly supervisorReport: SupervisorReportItem[];
+  readonly loadingReport: boolean;
+  readonly onRefreshReport: () => void;
 }
 
 export function AdminOverviewTab({
@@ -111,17 +111,17 @@ export function AdminOverviewTab({
                   />
                   <XAxis type="number" hide />
                   <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
-                  <Bar dataKey="students" radius={[0, 6, 6, 0]} barSize={18}>
-                    {sortedReport.map((sup, index) => {
-                      const barColor =
-                        sup.studentCount >= 5
-                          ? "#ef4444"
-                          : sup.studentCount >= 3
-                          ? "#f97316"
-                          : "#10b981";
-
-                      return <Cell key={`cell-${index}`} fill={barColor} />;
-                    })}
+                  <Bar
+                    dataKey="students"
+                    radius={[0, 6, 6, 0]}
+                    barSize={18}
+                    shape={(props: any) => {
+                      const count = props.students ?? props.value ?? 0;
+                      const fill =
+                        count >= 5 ? "#ef4444" : count >= 3 ? "#f97316" : "#10b981";
+                      return <Rectangle {...props} fill={fill} />;
+                    }}
+                  >
                     <LabelList position="right" offset={8} className="fill-foreground font-bold" fontSize={12} />
                   </Bar>
                 </BarChart>

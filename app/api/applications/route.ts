@@ -100,7 +100,7 @@ async function validateProgramAndParticipants(
 ): Promise<{ program?: Program; error?: { message: string; status: number } }> {
   const programRepo = await getProgramRepository();
   const program = await programRepo.findOneBy({ id: programId });
-  if (!program || program.status !== ProgramStatus.ACTIVE) {
+  if (program?.status !== ProgramStatus.ACTIVE) {
     return { error: { message: "Program not found or not active.", status: 400 } };
   }
 
@@ -210,7 +210,7 @@ function sendApplicationSubmittedEmails(
 export async function POST(request: Request) {
   try {
     const authUser = await getAuthUser(request);
-    if (!authUser || authUser.role !== UserRole.SUPERVISEE) {
+    if (authUser?.role !== UserRole.SUPERVISEE) {
       return NextResponse.json(
         { success: false, error: "Forbidden. Only Supervisees can apply for supervision." },
         { status: 403 }

@@ -438,6 +438,7 @@ export default function AdminPortalPage() {
         {/* Tabbed Navigation Bar */}
         <div className="flex border-b border-border overflow-x-auto no-scrollbar gap-2 sm:gap-6">
           <button
+            type="button"
             onClick={() => setActiveTab("overview")}
             className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === "overview"
@@ -450,6 +451,7 @@ export default function AdminPortalPage() {
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab("breakdown")}
             className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === "breakdown"
@@ -462,6 +464,7 @@ export default function AdminPortalPage() {
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab("assignments")}
             className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === "assignments"
@@ -474,6 +477,7 @@ export default function AdminPortalPage() {
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab("users")}
             className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === "users"
@@ -486,6 +490,7 @@ export default function AdminPortalPage() {
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab("add-user")}
             className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === "add-user"
@@ -498,6 +503,7 @@ export default function AdminPortalPage() {
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab("programs")}
             className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === "programs"
@@ -511,6 +517,7 @@ export default function AdminPortalPage() {
 
           {currentUser.role === "SUPERADMIN" && (
             <button
+              type="button"
               onClick={() => setActiveTab("settings")}
               className={`flex items-center gap-2 pb-3 px-1 text-sm font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
                 activeTab === "settings"

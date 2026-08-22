@@ -16,8 +16,8 @@ import { AlertCircle, CheckCircle2, Loader2, Lock, Mail, User, UserPlus } from "
 import type { User as UserAccount } from "@/types/portal";
 
 interface AdminAddUserTabProps {
-  currentUser: UserAccount;
-  onUserCreated: () => void;
+  readonly currentUser: UserAccount;
+  readonly onUserCreated: () => void;
 }
 
 export function AdminAddUserTab({ currentUser, onUserCreated }: AdminAddUserTabProps) {
@@ -28,7 +28,7 @@ export function AdminAddUserTab({ currentUser, onUserCreated }: AdminAddUserTabP
   const [createLoading, setCreateLoading] = useState(false);
   const [createStatus, setCreateStatus] = useState<{ success?: boolean; msg?: string } | null>(null);
 
-  const handleCreateUser = async (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setCreateLoading(true);
     setCreateStatus(null);

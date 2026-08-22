@@ -49,7 +49,7 @@ export async function getSmtpConfig(): Promise<SmtpConfig> {
 
   return {
     host: getVal("SMTP_HOST"),
-    port: parseInt(getVal("SMTP_PORT") || "587", 10),
+    port: Number.parseInt(getVal("SMTP_PORT") || "587", 10),
     secure: getVal("SMTP_SECURE") === "true",
     user: getVal("SMTP_USER"),
     pass: getVal("SMTP_PASS"),
@@ -84,9 +84,7 @@ export async function createTransporter(): Promise<Transporter> {
 }
 
 export async function getTransporter(): Promise<Transporter> {
-  if (!cachedTransporter) {
-    cachedTransporter = await createTransporter();
-  }
+  cachedTransporter ??= await createTransporter();
   return cachedTransporter;
 }
 
